@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Tue, 24 Nov 2026 09:20:00 +0000
+Subject: [PATCH 3/3] Questions: the open doubt of task 1
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ docs/reviews/2026-11-24-void-entry-1.md | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+ create mode 100644 docs/reviews/2026-11-24-void-entry-1.md
+
+diff --git a/docs/reviews/2026-11-24-void-entry-1.md b/docs/reviews/2026-11-24-void-entry-1.md
+new file mode 100644
+index 0000000..47f8c62
+--- /dev/null
++++ b/docs/reviews/2026-11-24-void-entry-1.md
+@@ -0,0 +1,12 @@
++# Questions: feature/void-entry run 1
++
++*The questions of this run that the docs did not settle, each with the answer the AI picked and an independent agent's; `/pose-questions` takes them to the owner, and the file stays on the branch as the record of what the AI did on its own and why.*
++
++### Q1 May tally void delete an entry
++**Where.** design, the plan written for task 1, `src/ledger.js` (`voidEntry`)
++**Question.** May `tally void` delete an entry's row although `docs/rules/ledger.md` says an entry is never changed or deleted once booked?
++**Options.** (1) yes: the rule gets an exception for `tally void`, which erases the row, memo included, and the entry is in no balance, report or row afterwards (2) no: `tally void` books a reversing entry and the row stays, memo included
++**Picked.** (1): the record requires that nothing of the entry is left to read after a data-protection request, which a reversing entry cannot give; the rule says nothing of erasure by request.
++**Subagent.** (2), disagree.
++**Acted on.** no
++**Status.** open

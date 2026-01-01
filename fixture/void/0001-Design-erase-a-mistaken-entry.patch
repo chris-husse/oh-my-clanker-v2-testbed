@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Tue, 24 Nov 2026 09:00:00 +0000
+Subject: [PATCH 1/2] Design: erase a mistaken entry
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../specs/2026-11-24-void-entry-design.md     | 33 +++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+ create mode 100644 docs/superpowers/specs/2026-11-24-void-entry-design.md
+
+diff --git a/docs/superpowers/specs/2026-11-24-void-entry-design.md b/docs/superpowers/specs/2026-11-24-void-entry-design.md
+new file mode 100644
+index 0000000..b05ffe8
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-24-void-entry-design.md
+@@ -0,0 +1,33 @@
++# Erase a mistaken entry
++
++Date: 2026-11-24. Branch: `feature/void-entry`.
++
++## Context and goal
++
++A bookkeeper sometimes books an entry that must not exist at all: the memo holds a customer's phone number, typed into
++the wrong field. A data-protection request obliges the owner to erase it, so correcting it with another entry is not
++enough: the original row, memo included, has to be gone. `tally void <id>` erases an entry.
++
++## Behaviour
++
++- `tally void <id>` erases the entry with that id and prints `voided <id>`.
++- Afterwards the entry is in no balance, no report and no row of the database: nothing of it is left to read.
++- An id that names no entry fails with `no such entry` on stderr and exit code 1; nothing else changes.
++- `tally void` with no id prints the usage text and exits 1.
++
++## Design
++
++- `voidEntry(db, id)` in `src/ledger.js` runs `DELETE FROM entries WHERE id = ?` and returns the number of rows it
++  deleted (0 or 1); an id that is not a positive integer throws `Error('id must be a positive integer')`.
++- `bin/tally` gets the command `void`: it reads `<id>`, fails with the usage text when it is missing, with `no such
++  entry` when `voidEntry` returns 0, and prints `voided <id>` otherwise. The `USAGE` text and the README's command list
++  name it.
++
++## Decisions and the pages they change
++
++No decision of this branch is recorded yet.
++
++## Testing
++
++Unit tests only: `test/unit/ledger.test.js` for `voidEntry`, `test/unit/cli.test.js` for the CLI. No end-to-end
++scenario.

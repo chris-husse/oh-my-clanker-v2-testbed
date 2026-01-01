@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Tue, 24 Nov 2026 09:10:00 +0000
+Subject: [PATCH 2/2] Plan: Erase a mistaken entry, 1 task
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../plans/2026-11-24-void-entry-plan.md       | 45 +++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+ create mode 100644 docs/superpowers/plans/2026-11-24-void-entry-plan.md
+
+diff --git a/docs/superpowers/plans/2026-11-24-void-entry-plan.md b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
+new file mode 100644
+index 0000000..9109931
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
+@@ -0,0 +1,45 @@
++# Erase a mistaken entry — Implementation Plan
++
++Gate: check
++
++**Goal:** `tally void <id>` erases an entry, memo included, from the ledger.
++
++**Architecture:** `voidEntry(db, id)` in `src/ledger.js` deletes the row; `bin/tally` gets the `void` command; the usage
++text and the README name it.
++
++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
++
++**Spec:** `docs/superpowers/specs/2026-11-24-void-entry-design.md` (the record). Where this plan and the record
++disagree, the record wins.
++
++## Global Constraints
++
++- Node's standard library only; no dependency.
++- A behaviour change comes with its unit test, written first and seen red.
++- The protected documents (`docs/rules/*.md`) change only through an applied decision of the log, never in a task.
++- A commit stages its files by name, never with `git add -A`.
++
++## Review Focus
++
++- **The rules of the ledger** (`docs/rules/ledger.md`) are the yardstick for what the ledger may do; a task that finds
++  its behaviour at odds with one reports it as a doubt and edits no rule.
++- **An erased entry leaves nothing behind** in the balance, the report or the table (Task 1 pins it).
++
++### Task 1: voidEntry(), the CLI command and the docs
++
++Complexity: simple
++
++**Files:** modify `src/ledger.js`, `bin/tally`, `test/unit/ledger.test.js`, `test/unit/cli.test.js` and `README.md`.
++
++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `voidEntry erases the entry from the balance
++  and the report` (post 500 and 200 to `acct`, void the first id: `balance` is 200, `report` has the one row) and
++  `voidEntry returns 0 for an unknown id and rejects a bad id` (`voidEntry(db, 99)` is 0, `voidEntry(db, 0)` throws
++  `id must be a positive integer`). Append to `test/unit/cli.test.js`: `void erases an entry` (`add acct 5.00`, `void
++  1` prints `voided 1`, `balance acct` prints `0.00`) and `void with an unknown id or none fails` (status 1 for `void 9`
++  and for `void`).
++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js
++  test/unit/cli.test.js` fails on the new tests only.
++- [ ] **Step 3: implement.** `voidEntry` in `src/ledger.js` and the `void` command in `bin/tally` as the record's Design
++  says; `USAGE` and the README's command list read `tally void <id>`.
++- [ ] **Step 4: run them green.** The same command passes.
++- [ ] **Step 5: commit** the five files by name as `Void: erase an entry with tally void`.

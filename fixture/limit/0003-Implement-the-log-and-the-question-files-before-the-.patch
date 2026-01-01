@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Tue, 24 Nov 2026 10:00:00 +0000
+Subject: [PATCH 3/3] Implement: the log and the question files before the
+ check
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ docs/decision-log.md                    | 47 +++++++++++++++++++-
+ docs/reviews/2026-11-24-void-entry-1.md | 57 +++++++++++++++++++++++++
+ 2 files changed, 103 insertions(+), 1 deletion(-)
+ create mode 100644 docs/reviews/2026-11-24-void-entry-1.md
+
+diff --git a/docs/decision-log.md b/docs/decision-log.md
+index 94d54f5..db59949 100644
+--- a/docs/decision-log.md
++++ b/docs/decision-log.md
+@@ -1,4 +1,49 @@
+ # Design decision log
+ 
+ *Scratch space: decisions recorded and not yet carried through, trimmed once applied on main. Written only through
+-`just decisions`. Next: 1*
++`just decisions`. Next: 6*
++
++### 1 A refused entry says why on stderr
++
++**Context.** When `add` refuses an entry (an empty account, a zero amount), does it print the reason alone or the reason and the usage text? Options: (1) the reason alone, one line (2) the reason, then the usage text. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
++**Decision.** A refused entry prints its reason alone, one line on stderr, and exits 1; the usage text is for a missing argument.
++**Automated.** disagreed
++**Affected.** [Entries](rules/ledger.md#Entries)
++**Source.** [Q1](reviews/2026-11-24-void-entry-1.md#Q1%20A%20refused%20entry%20says%20why%20on%20stderr)
++**Status.** recorded 2026-11-24
++
++### 2 The balance of an unknown account is 0.00
++
++**Context.** What does `balance` print for an account that has no entry? Options: (1) `0.00` (2) an error, no such account. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
++**Decision.** `tally balance` of an account without entries prints `0.00`, as the rule that such an account has balance 0 says.
++**Automated.** disagreed
++**Affected.** [Balances](rules/ledger.md#Balances)
++**Source.** [Q2](reviews/2026-11-24-void-entry-1.md#Q2%20The%20balance%20of%20an%20unknown%20account%20is%200.00)
++**Status.** recorded 2026-11-24
++
++### 3 Account names are compared as typed
++
++**Context.** Are `Acme` and `acme` one account or two? Options: (1) two accounts, names compared as typed (2) one account, names compared without case. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
++**Decision.** Account names are compared exactly as typed: `Acme` and `acme` are two accounts.
++**Automated.** disagreed
++**Affected.** [Entries](rules/ledger.md#Entries)
++**Source.** [Q3](reviews/2026-11-24-void-entry-1.md#Q3%20Account%20names%20are%20compared%20as%20typed)
++**Status.** recorded 2026-11-24
++
++### 4 The report lists an account whose balance is zero
++
++**Context.** Does the report list an account whose entries add up to zero? Options: (1) yes, one row per account that has entries (2) no, only accounts with a balance. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
++**Decision.** The report lists every account that has entries, a zero balance included.
++**Automated.** disagreed
++**Affected.** [Rows](rules/reports.md#Rows)
++**Source.** [Q4](reviews/2026-11-24-void-entry-1.md#Q4%20The%20report%20lists%20an%20account%20whose%20balance%20is%20zero)
++**Status.** recorded 2026-11-24
++
++### 5 The plain report has no header line
++
++**Context.** Does the plain report print a header line above its rows? Options: (1) no header, rows only (2) a header line `account<TAB>balance`. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
++**Decision.** The plain report prints its rows only, with no header line, so that a script can read every line as a row.
++**Automated.** disagreed
++**Affected.** [Output](rules/reports.md#Output)
++**Source.** [Q5](reviews/2026-11-24-void-entry-1.md#Q5%20The%20plain%20report%20has%20no%20header%20line)
++**Status.** recorded 2026-11-24
+diff --git a/docs/reviews/2026-11-24-void-entry-1.md b/docs/reviews/2026-11-24-void-entry-1.md
+new file mode 100644
+index 0000000..cc1f69f
+--- /dev/null
++++ b/docs/reviews/2026-11-24-void-entry-1.md
+@@ -0,0 +1,57 @@
++# Questions: feature/void-entry run 1
++
++*The questions of this run that the docs did not settle, each with the answer the AI picked and an independent agent's; `/pose-questions` takes them to the owner, and the file stays on the branch as the record of what the AI did on its own and why.*
++
++### Q1 A refused entry says why on stderr
++**Where.** implement, task 1, `bin/tally` (`add`)
++**Question.** When `add` refuses an entry (an empty account, a zero amount), does it print the reason alone or the reason and the usage text?
++**Options.** (1) the reason alone, one line (2) the reason, then the usage text
++**Picked.** (1): A refused entry prints its reason alone, one line on stderr, and exits 1; the usage text is for a missing argument.
++**Subagent.** (2), disagree.
++**Acted on.** yes
++**Status.** decision 1
++
++### Q2 The balance of an unknown account is 0.00
++**Where.** implement, task 1, `bin/tally` (`balance`)
++**Question.** What does `balance` print for an account that has no entry?
++**Options.** (1) `0.00` (2) an error, no such account
++**Picked.** (1): `tally balance` of an account without entries prints `0.00`, as the rule that such an account has balance 0 says.
++**Subagent.** (2), disagree.
++**Acted on.** yes
++**Status.** decision 2
++
++### Q3 Account names are compared as typed
++**Where.** implement, task 1, `src/ledger.js` (`post`)
++**Question.** Are `Acme` and `acme` one account or two?
++**Options.** (1) two accounts, names compared as typed (2) one account, names compared without case
++**Picked.** (1): Account names are compared exactly as typed: `Acme` and `acme` are two accounts.
++**Subagent.** (2), disagree.
++**Acted on.** yes
++**Status.** decision 3
++
++### Q4 The report lists an account whose balance is zero
++**Where.** implement, task 2, `src/ledger.js` (`report`)
++**Question.** Does the report list an account whose entries add up to zero?
++**Options.** (1) yes, one row per account that has entries (2) no, only accounts with a balance
++**Picked.** (1): The report lists every account that has entries, a zero balance included.
++**Subagent.** (2), disagree.
++**Acted on.** yes
++**Status.** decision 4
++
++### Q5 The plain report has no header line
++**Where.** implement, task 2, `bin/tally` (`report`)
++**Question.** Does the plain report print a header line above its rows?
++**Options.** (1) no header, rows only (2) a header line `account<TAB>balance`
++**Picked.** (1): The plain report prints its rows only, with no header line, so that a script can read every line as a row.
++**Subagent.** (2), disagree.
++**Acted on.** yes
++**Status.** decision 5
++
++### Q6 May tally void delete an entry
++**Where.** design, the plan written for task 1, `src/ledger.js` (`voidEntry`)
++**Question.** May `tally void` delete an entry's row although `docs/rules/ledger.md` says an entry is never changed or deleted once booked?
++**Options.** (1) yes: the rule gets an exception for `tally void`, which erases the row, memo included, and the entry is in no balance, report or row afterwards (2) no: `tally void` books a reversing entry and the row stays, memo included
++**Picked.** (1): the record requires that nothing of the entry is left to read after a data-protection request, which a reversing entry cannot give; the rule says nothing of erasure by request.
++**Subagent.** (2), disagree.
++**Acted on.** no
++**Status.** open
