@@ -1,0 +1,137 @@
+#!/bin/sh
+# The milestone gate as a plain POSIX shell script: lint (`node --check`), the unit tests (`sh omc/bin/unit.sh`), then
+# the e2e scenarios (`sh omc/bin/e2e.sh`), cheapest first. Pass or fail is the exit code.
+#
+#   omc/bin/verify               every step
+#   omc/bin/verify --failed-only only the steps the last attempt recorded as failed, each narrowed to what failed
+#                                (the gate runner withholds a pass for any run with arguments)
+#
+# A failing step is recorded as the file .cache/verify/failed/<step>, one id per line (an empty file: the whole
+# step), and the script stops there, so an attempt records at most its first failure. The records are read and written
+# here, by the shell alone. Every step streams its output straight to stdout and stderr: the gate tails them live, and
+# a held e2e run (--keep-alive-on-failure) prints its OMC_HOLD line while still running.
+set -u
+cd "$(dirname "$0")/../.." || exit 2
+
+rerun=0
+case "$#:${1-}" in
+  0:) ;;
+  1:--failed-only) rerun=1 ;;
+  *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
+esac
+set --
+
+records=.cache/verify/failed
+tap_log=.cache/verify/unit.tap
+summary=target/e2e-runs/summary.md
+known_steps=" lint unit e2e "
+
+# the recorded steps, one per line (a file name that is not a step name is no record)
+recorded_steps() {
+  [ -d "$records" ] || return 0
+  ls -1 "$records" | grep -E '^[a-z0-9][a-z0-9-]*$'
+}
+
+if [ "$rerun" = 1 ]; then
+  steps=$(recorded_steps)
+  if [ -z "$steps" ]; then
+    echo "verify --failed-only: nothing recorded to rerun" >&2
+    exit 1
+  fi
+  for recorded_step in $steps; do
+    case "$known_steps" in
+      *" $recorded_step "*) ;;
+      *) echo "verify --failed-only: the record of unknown step $recorded_step is in $records/; remove it or fix the script" >&2; exit 1 ;;
+    esac
+  done
+fi
+mkdir -p .cache/verify
+
+# unit_ids: the failing top-level test names of the TAP log, unescaped; none when a test file failed (its name a path
+# ending in .js), so that the whole step is recorded
+unit_ids() {
+  [ -f "$tap_log" ] || return 0
+  grep -Eq '^not ok [0-9]+ - .*\.[cm]?js$' "$tap_log" && return 0
+  sed -n -E 's/^not ok [0-9]+ - (.*)$/\1/p' "$tap_log" | sed -E 's/ # (SKIP|TODO).*$//; s/\\(.)/\1/g' | awk '!seen[$0]++'
+}
+
+# e2e_ids: the scenario ids of the `| FAIL | <id> | …` rows of the e2e summary
+e2e_ids() {
+  [ -f "$summary" ] || return 0
+  sed -n -E 's/^\|[[:space:]]*FAIL[[:space:]]*\|[[:space:]]*([^|[:space:]]+)[[:space:]]*\|.*$/\1/p' "$summary"
+}
+
+# record_failure <step>: unit records its failing test names, e2e its FAIL scenario ids, lint the whole step. A step
+# whose ids cannot be read is recorded whole, and says so.
+record_failure() {
+  ids=""
+  case "$1" in
+    unit) ids=$(unit_ids) ;;
+    e2e) ids=$(e2e_ids) ;;
+  esac
+  mkdir -p "$records"
+  if [ -n "$ids" ]; then
+    printf '%s\n' "$ids" >"$records/$1.tmp" && mv "$records/$1.tmp" "$records/$1"
+    echo "verify: recorded $1: $(printf '%s' "$ids" | paste -sd, - | sed 's/,/, /g')" >&2
+  else
+    [ "$1" = lint ] || echo "verify: no failing $1 ids could be read; recording the whole step" >&2
+    : >"$records/$1"
+    echo "verify: recorded $1 (the whole step)" >&2
+  fi
+}
+
+# step <name> <command...>: run the command with its output untouched; a pass clears the step's record, a failure
+# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
+step() {
+  name=$1
+  shift
+  if [ "$rerun" = 1 ] && [ ! -e "$records/$name" ]; then
+    return 0
+  fi
+  echo "verify: $name" >&2
+  "$@"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    record_failure "$name"
+    exit "$status"
+  fi
+  rm -f "$records/$name"
+}
+
+lint() {
+  { find src -name '*.js' | sort; printf '%s\n' bin/tally scripts/*.mjs mcp/*.mjs; } | {
+    status=0
+    while IFS= read -r file; do
+      node --check "$file" || status=1
+    done
+    exit "$status"
+  }
+}
+
+# a regex matching the text exactly, for --test-name-pattern
+pattern_of() {
+  printf '%s' "$1" | sed 's#[][\\.*^$+?(){}|/]#\\&#g'
+}
+
+step lint lint
+
+# unit: a rerun runs only the recorded test names (one --test-name-pattern each), or every test when the record is
+# empty
+if [ "$rerun" = 1 ] && [ -s "$records/unit" ]; then
+  while IFS= read -r id; do
+    [ -n "$id" ] && set -- "$@" --test-name-pattern "/^$(pattern_of "$id")\$/"
+  done <"$records/unit"
+fi
+rm -f "$tap_log"
+step unit sh omc/bin/unit.sh "$@"
+set --
+
+# e2e: a rerun runs only the recorded scenario ids (--only), or every scenario when the record is empty
+if [ "$rerun" = 1 ] && [ -s "$records/e2e" ]; then
+  set -- --only "$(grep -v '^$' "$records/e2e" | paste -sd, -)"
+fi
+step e2e sh omc/bin/e2e.sh "$@"
+
+if [ "$rerun" = 1 ]; then
+  echo "verify --failed-only: every recorded step passes now; only a full run gives the verdict" >&2
+fi
