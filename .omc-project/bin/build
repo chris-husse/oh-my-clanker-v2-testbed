@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# The build, no tests: dist/tally.mjs, the src/ modules bundled into one module that must parse. A relative import of
+# a missing module or name fails the build, naming it. Pass or fail is the exit code.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+node scripts/build.mjs
