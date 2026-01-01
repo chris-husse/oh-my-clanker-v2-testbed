@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Fri, 20 Nov 2026 09:10:00 +0000
+Subject: [PATCH 2/5] Plan: Sort the report by cents, 2 tasks
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../plans/2026-11-20-report-sort-plan.md      | 60 +++++++++++++++++++
+ 1 file changed, 60 insertions(+)
+ create mode 100644 docs/superpowers/plans/2026-11-20-report-sort-plan.md
+
+diff --git a/docs/superpowers/plans/2026-11-20-report-sort-plan.md b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
+new file mode 100644
+index 0000000..fb35acf
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
+@@ -0,0 +1,60 @@
++# Sort the report by cents — Implementation Plan
++
++Gate: check
++
++**Goal:** `tally report [--json] [--sort account|cents]`: with `--sort cents` the rows come largest balance first.
++
++**Architecture:** `report(db, { sort })` in `src/ledger.js` orders the rows; `bin/tally` reads the flag and passes it
++on; the usage text and the README name it.
++
++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
++
++**Spec:** `docs/superpowers/specs/2026-11-20-report-sort-design.md` (the record). Where this plan and the record
++disagree, the record wins.
++
++## Global Constraints
++
++- Node's standard library only; no dependency.
++- A behaviour change comes with its unit test, written first and seen red.
++- The SQL text of `report` stays as it is: the `cents` order is a stable sort over the rows the query returns.
++- A commit stages its files by name, never with `git add -A`.
++
++## Review Focus
++
++- **Ties** under `--sort cents` keep account order (Task 1 pins it).
++- **A missing key** after `--sort` is the usage error, an unknown key the `sort must be account or cents` error
++  (Task 2 pins both).
++
++### Task 1: report() takes a sort key
++
++Complexity: simple
++
++**Files:** modify `src/ledger.js` and `test/unit/ledger.test.js`.
++
++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `report sorts by cents, largest first, ties
++  by account` (accounts `abe` 5, `zed` 1, `kim` 5, `lee` 9: `{ sort: 'cents' }` gives `lee`, `abe`, `kim`, `zed`) and
++  `report rejects an unknown sort key` (`{ sort: 'memo' }` throws `sort must be account or cents`).
++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js` fails on
++  the two new tests only.
++- [ ] **Step 3: implement.** `report(db, { sort = 'account' } = {})` throws for a key other than `account` or `cents`,
++  keeps its query, and for `cents` returns the rows stably sorted by `b.cents - a.cents`.
++- [ ] **Step 4: run them green.** The same command passes.
++- [ ] **Step 5: commit** `src/ledger.js` and `test/unit/ledger.test.js` as `Report: sort by cents in ledger.report`.
++
++### Task 2: the CLI flag and the docs
++
++Complexity: simple
++
++**Files:** modify `bin/tally`, `test/unit/cli.test.js` and `README.md`.
++
++- [ ] **Step 1: the failing tests.** Append to `test/unit/cli.test.js`: `report --json --sort cents orders by balance,
++  largest first` (accounts `abe` 1.00, `zed` 3.00: `[{"account":"zed","cents":300},{"account":"abe","cents":100}]`),
++  `report --sort cents prints the largest balance first in the plain output`, and `report --sort with no key or an
++  unknown key fails` (`execFileSync` throws with status 1 for `report --sort` and for `report --sort memo`).
++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/cli.test.js` fails on the
++  new tests only.
++- [ ] **Step 3: implement.** `showReport` in `bin/tally` reads `--sort` with `flagValue`, calls `fail(USAGE)` when the
++  flag is there with no key after it, and passes the key to `report`; `USAGE` and the `README.md` command list read
++  `tally report [--json] [--sort account|cents]`.
++- [ ] **Step 4: run them green.** The same command passes, and so does `test/unit/ledger.test.js`.
++- [ ] **Step 5: commit** `bin/tally`, `test/unit/cli.test.js` and `README.md` as `Report: the --sort flag of tally report`.

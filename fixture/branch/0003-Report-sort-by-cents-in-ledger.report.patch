@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Fri, 20 Nov 2026 10:00:00 +0000
+Subject: [PATCH 3/5] Report: sort by cents in ledger.report
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/ledger.js            |  6 ++++--
+ test/unit/ledger.test.js | 19 +++++++++++++++++++
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..51c0b58 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -26,11 +26,13 @@ export function balance(db, account) {
+   return Number(row.cents);
+ }
+ 
+-export function report(db) {
+-  return db
++export function report(db, { sort = 'account' } = {}) {
++  if (sort !== 'account' && sort !== 'cents') throw new Error('sort must be account or cents');
++  const rows = db
+     .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account')
+     .all()
+     .map((row) => ({ account: row.account, cents: Number(row.cents) }));
++  return sort === 'cents' ? rows.sort((a, b) => b.cents - a.cents) : rows;
+ }
+ 
+ export function state(db) {
+diff --git a/test/unit/ledger.test.js b/test/unit/ledger.test.js
+index e8a62ff..02bae63 100644
+--- a/test/unit/ledger.test.js
++++ b/test/unit/ledger.test.js
+@@ -42,3 +42,22 @@ test('report is sorted by account', () => {
+     { account: 'zed', cents: 1 },
+   ]);
+ });
++
++test('report sorts by cents, largest first, ties by account', () => {
++  const db = openDb(':memory:');
++  post(db, { account: 'zed', cents: 1 });
++  post(db, { account: 'abe', cents: 5 });
++  post(db, { account: 'kim', cents: 5 });
++  post(db, { account: 'lee', cents: 9 });
++  assert.deepEqual(report(db, { sort: 'cents' }), [
++    { account: 'lee', cents: 9 },
++    { account: 'abe', cents: 5 },
++    { account: 'kim', cents: 5 },
++    { account: 'zed', cents: 1 },
++  ]);
++});
++
++test('report rejects an unknown sort key', () => {
++  const db = openDb(':memory:');
++  assert.throws(() => report(db, { sort: 'memo' }), /sort must be account or cents/);
++});

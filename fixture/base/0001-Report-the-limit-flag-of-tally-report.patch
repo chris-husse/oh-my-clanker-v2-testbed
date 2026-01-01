@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tally author <author@example.invalid>
+Date: Tue, 24 Nov 2026 12:00:00 +0000
+Subject: [PATCH] Report: the --limit flag of tally report
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ README.md                |  4 +++-
+ bin/tally                |  6 ++++--
+ src/ledger.js            |  6 ++++--
+ test/unit/cli.test.js    | 11 +++++++++++
+ test/unit/ledger.test.js | 12 ++++++++++++
+ 5 files changed, 34 insertions(+), 5 deletions(-)
+
+diff --git a/README.md b/README.md
+index 8d64bfc..604ddde 100644
+--- a/README.md
++++ b/README.md
+@@ -7,7 +7,9 @@ A tiny dependency-free ledger: a SQLite-backed library, an HTTP server and a CLI
+ 
+     bin/tally add <account> <amount> [--memo m]
+     bin/tally balance <account>
+-    bin/tally report [--json]
++    bin/tally report [--json] [--limit <n>]
++
++`report --limit <n>` prints at most `n` rows of the report, in the order it is printed.
+ 
+ The database path comes from `TALLY_DB` (default `data/tally.db`).
+ 
+diff --git a/bin/tally b/bin/tally
+index 833b0ca..3e1d43a 100755
+--- a/bin/tally
++++ b/bin/tally
+@@ -5,7 +5,7 @@ import { post, balance, report } from '../src/ledger.js';
+ const USAGE = `usage:
+   tally add <account> <amount> [--memo m]
+   tally balance <account>
+-  tally report [--json]`;
++  tally report [--json] [--limit <n>]`;
+ 
+ function dollars(cents) {
+   return (cents / 100).toFixed(2);
+@@ -44,7 +44,9 @@ function showBalance(db, args) {
+ }
+ 
+ function showReport(db, args) {
+-  const rows = report(db);
++  const limit = flagValue(args, '--limit');
++  if (args.includes('--limit') && limit === undefined) fail(USAGE);
++  const rows = report(db, { limit: limit === undefined ? undefined : Number(limit) });
+   if (args.includes('--json')) console.log(JSON.stringify(rows));
+   else for (const row of rows) console.log(`${row.account}\t${dollars(row.cents)}`);
+ }
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..a0f60e2 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -26,11 +26,13 @@ export function balance(db, account) {
+   return Number(row.cents);
+ }
+ 
+-export function report(db) {
+-  return db
++export function report(db, { limit } = {}) {
++  if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) throw new Error('limit must be a positive integer');
++  const rows = db
+     .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account')
+     .all()
+     .map((row) => ({ account: row.account, cents: Number(row.cents) }));
++  return limit === undefined ? rows : rows.slice(0, limit);
+ }
+ 
+ export function state(db) {
+diff --git a/test/unit/cli.test.js b/test/unit/cli.test.js
+index 798c0b1..c63eed8 100644
+--- a/test/unit/cli.test.js
++++ b/test/unit/cli.test.js
+@@ -39,3 +39,14 @@ test('report prints tab separated lines', () => {
+     assert.equal(tally('report'), 'acct\t10.50\n');
+   });
+ });
++
++test('report --limit prints at most that many rows', () => {
++  withDb((tally) => {
++    tally('add', 'abe', '1.00');
++    tally('add', 'kim', '2.00');
++    tally('add', 'zed', '3.00');
++    assert.equal(tally('report', '--limit', '2'), 'abe\t1.00\nkim\t2.00\n');
++    assert.throws(() => tally('report', '--limit'), (error) => error.status === 1);
++    assert.throws(() => tally('report', '--limit', 'two'), (error) => error.status === 1);
++  });
++});
+diff --git a/test/unit/ledger.test.js b/test/unit/ledger.test.js
+index e8a62ff..685c55d 100644
+--- a/test/unit/ledger.test.js
++++ b/test/unit/ledger.test.js
+@@ -42,3 +42,15 @@ test('report is sorted by account', () => {
+     { account: 'zed', cents: 1 },
+   ]);
+ });
++
++test('report keeps the first rows up to the limit', () => {
++  const db = openDb(':memory:');
++  post(db, { account: 'zed', cents: 1 });
++  post(db, { account: 'abe', cents: 2 });
++  post(db, { account: 'kim', cents: 3 });
++  assert.deepEqual(report(db, { limit: 2 }), [
++    { account: 'abe', cents: 2 },
++    { account: 'kim', cents: 3 },
++  ]);
++  assert.throws(() => report(db, { limit: 0 }), /limit must be a positive integer/);
++});
