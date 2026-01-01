@@ -1,0 +1,198 @@
+# verify: a held e2e run
+
+Read this when the gate log's last line is `OMC_HOLD <run-dir>`. The run is held on purpose, not stuck: an e2e
+scenario failed and `--keep-alive-on-failure` keeps the last failed scenario's server and database alive so you can look
+at the state the failure left behind. The gate stops at its first failing step, and one scenario is held per attempt; a
+scenario fixed in this attempt lets another failing scenario be held in the next one. A held run keeps one verify slot
+until it is released. Never kill the run. You end the hold with `just release` (step 6), and no turn ends before that.
+`just release` stops only the held e2e runner (it signals only the pid in `<run-dir>/harness.pid`, and only when that is
+`node scripts/e2e.mjs`): it is the intended end of the hold, not a kill of the gate. The gate run then ends red; after
+the release, continue with your loop (step 5 of the terminal: rerun what the fixes fixed, then a fresh full run from
+its step 1). Never rerun the gate while the run is held.
+
+The order is always the same: first every investigation step 2 chose, one `/investigate local` call per scenario, the
+held scenario first; then one release (step 6); then your loop. A `BLOCKED:` anywhere ends the investigations: the
+release at once (step 6) and `needs_user` (step 5).
+
+The investigation is `/investigate local`. Its WHERE (the `tally-local` namespace, the parameters and the files they
+come from, the read-only and no-fallback rules, the `BLOCKED:`, `UNRESOLVED:` and `HOLD_ENDED:` results, the report
+shape) is `omc/hook/investigation/investigation-context.local.md`; this note holds only the lifecycle around it. The
+investigation's own folder is `investigations/` beside the primary checkout (in the parent of the primary checkout's
+directory, not in the worktree), is never committed and is created only when something is written to it.
+
+## 1. The hold's clock and run dir
+
+1. `<run-dir>` is the directory the marker names (`target/e2e-runs` unless a `--report-dir` was given). Quote it in
+   every shell command: `"<run-dir>"`.
+2. `test -f "<run-dir>/harness.pid"` must succeed: the runner deletes the file when the hold ends. If it is missing
+   before any investigation started, there is nothing live to investigate: BLOCKED, step 5. If it is missing later, the
+   hold is over: step 4.
+3. The hold's start is the modification time of that file: `stat -c %Y -- "<run-dir>/harness.pid"` (Linux) or
+   `stat -f %m -- "<run-dir>/harness.pid"` (macOS). Elapsed time is `date +%s` minus it. The runner ends the hold on its
+   own at 1800 seconds. New investigations start only while the elapsed time is under 1200 seconds (20 minutes).
+
+## 2. Find the failing scenarios
+
+Read `"<run-dir>/summary.md"`: the `FAIL` rows. Each row names a scenario id and links its folder
+`<run-dir>/scenarios/<NN-name>/` (`output.txt`, `state.json`). If `summary.md` is missing, read `<run-dir>/junit.xml`
+for the failing scenarios (each `<testcase>` with a `<failure>`; its `name` is the scenario id and the folder is
+`<run-dir>/scenarios/<id>/`), and say so in the report.
+
+The held scenario is the one whose `output.txt` has the line `database <TALLY_DB_PATH>`, with `TALLY_DB_PATH` from
+`<run-dir>/stack.env`: only it has a live server and database. Investigate it first.
+
+Up to 10 failing scenarios: investigate each in turn. More than 10: investigate the held scenario and a sample of 2 to 4
+more, taken from different scenario files: 3 to 5 `/investigate local` calls in all, one per scenario (a scenario only
+read from its files, without a call of its own, is not investigated). The rest are not investigated: your final
+report lists each of them on its own line, by its full scenario id and title (the Report section below shows the
+form).
+
+## 3. Investigate, one scenario per call
+
+Before each call, check step 1.2 and that the elapsed time (step 1.3) is under 1200 seconds. If the file is gone, or the
+time limit is reached, stop starting investigations: step 4 (BLOCKED, step 5, when the file was gone before the first
+investigation started).
+
+Run `/investigate local <prompt>`, one scenario per call. The prompt names:
+
+- `<run-dir>` and the absolute path of the scenario folder `<run-dir>/scenarios/<NN-name>/`;
+- the held-run facts: the run is held on purpose, the held scenario's server keeps running, its database and its
+  server are the live evidence, and `tally-local` is the only route to them; whether this scenario is the held one
+  (step 2), since only the held scenario's live state is its own;
+- where the parameters live: `<run-dir>/stack.env` (`TALLY_DATABASE`, `TALLY_DB_PATH`) and `<run-dir>/ports.env`
+  (`TALLY_PORT`);
+- the question: why did this scenario fail.
+
+The result starts with one label, or is a diagnosis:
+
+- a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation (the briefing says what
+  makes one: this project fixes a held red only when the run's own evidence shows the cause, an unvalidated finding
+  included; a code-only cause is not one);
+- `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, not fixed without
+  the owner's word (step 4);
+- a result whose cause, by its own account, is a code-only cause (read from the code and not shown by the run's data:
+  no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the
+  label: not fixed without the owner's word, listed as unresolved with that cause;
+- `HOLD_ENDED: <what was gathered>`: the hold ended during the investigation; interrupted, not completed, never fixed:
+  step 4;
+- `BLOCKED: <cause>`: a tooling or access failure, a missing lead or missing input: step 5.
+
+`/investigate local` runs inline, in this turn: its result returns to you. Go on at once, in the same turn: after
+`BLOCKED:`, with step 5; otherwise with the next scenario step 2 chose, else with step 4 and the release (step 6). The
+result is never the end of the turn.
+
+If `/investigate local` cannot be run (the skill is missing, the Skill tool is unavailable), refuses, prints its usage,
+or returns `BLOCKED:`, that is BLOCKED: step 5. Never investigate in place of `/investigate local` a scenario the note
+told you to investigate, and never fix such a scenario from the logs alone.
+
+## 4. The time limit, and continuing
+
+The time limit is: the elapsed time reaches 1200 seconds, the hold ends (`<run-dir>/harness.pid` is gone) after an
+investigation started, or an investigation returns `HOLD_ENDED:`. Stop starting new investigations and release the run
+(step 6).
+
+After the release (the time limit reached, or every scenario you chose investigated), decide from the results. Only an
+investigation that returned a diagnosis is completed.
+
+- At least one diagnosis: continue with the normal fix loop from the diagnoses (the released run's server is gone).
+  `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are not fixed: they need the owner's decision. Only with a
+  diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from
+  its folder's files, and the report says so. The asymmetry is deliberate: no investigation was possible for a
+  scenario not investigated, while an investigated one that ended `UNRESOLVED:` was examined and did not meet this
+  project's evidence bar.
+  git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`, and no
+  reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and the
+  run's database. The one file under `.claude/projects` you may read is the one Claude Code itself points you at for
+  a long tool result of this session (`<session id>/tool-results/<name>`); nothing else there.
+- No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation
+  `UNRESOLVED:` or interrupted): return `needs_user` listing the `UNRESOLVED:`, interrupted and not investigated
+  scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the scenario artifacts are in
+  `<run-dir>`", and, when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only
+  cause: rerun `/verify` with the line `Authorized: <scenario id>: fix from the code-only cause` in its context"; and
+  do not fix, not even a scenario not investigated, unless the owner's word (below) covers it.
+
+**The owner's word.** The caller's context (the free text after the terminal's labelled input lines) may carry a line
+`Authorized: <scenario id>: fix from the code-only cause`. Such a line is the owner's word for that scenario alone:
+when its investigation ends `UNRESOLVED:` with a code-only cause, or it was not investigated, fix it from the cause the
+code shows as from a diagnosis, in the normal fix loop; none of the no-fix rules of this step applies to it, "not even
+a scenario not investigated" included. The report names the line and says the fix was authorized. Every other scenario
+keeps the rules above, and the line changes nothing of the investigations, the release or their order.
+
+The report lists the failing scenarios not investigated, the `UNRESOLVED` ones and the interrupted ones. Never change
+code while the run is held.
+
+## 5. BLOCKED
+
+BLOCKED means a tooling or access failure, and it always ends without a fix: an `/investigate local` that cannot be run
+or returns `BLOCKED:`, an error from any `tally-local` call (one made once the investigation started, with
+`<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4), a missing run file or key, or
+`<run-dir>/harness.pid` gone before any investigation started.
+
+Stop investigating at once, release the run (step 6), and return `needs_user` with the exact error text and the fix that
+matches the cause:
+
+- a `tally-local` failure (a failed call, a missing tool, a `database.user` other than `readonly`): restart the
+  `tally-local` MCP server (`node mcp/tally-mcp.mjs`, run from the root of the checkout that holds the run, whose
+  `data/` folder has the run's databases), then reconnect the MCP client (`/mcp` in Claude Code), and rerun `/verify`;
+- a missing run file or key (`summary.md` and `junit.xml` both, `stack.env`, `ports.env`; the runner writes them into
+  the run dir), or a hold already gone before any investigation started: rerun `/verify`;
+- `/investigate` refused at its Step 0 because `omc/hook/investigation/investigation-context.local.md` is missing:
+  restore `omc/hook/investigation/investigation-context.local.md`;
+- the `/investigate` skill missing or unavailable: reinstall omc (`just install`) and restore the skill link;
+- a prompt error (the scenario folder missing from the request): correct the prompt and rerun `/verify`.
+
+After a BLOCKED you do not fix: no code change is made on this path. A `BLOCKED:` whose cause is "hold already gone"
+ends the same way, even after earlier investigations completed: the live state is gone and the evidence is partial, so
+it fails closed by intent.
+
+## 6. Always release, even when the investigation errors
+
+Do this on every path out of the investigation: done, time limit, `HOLD_ENDED:`, BLOCKED or error. Release once, as
+soon as every investigation step 2 chose has returned (or step 4 or 5 stopped them), even when the first result
+already explains the others; do not wait for more. No investigation starts after the release (step 3 needs the hold).
+
+1. Run `just release --report-dir "<run-dir>"` (it runs `node scripts/release.mjs --report-dir "<run-dir>"`). It
+   signals the held runner, waits up to 120 seconds for it to exit, and prints `RELEASED` only when it is gone and the
+   held port is free; without `harness.pid` it prints `RELEASED` once the port is free, so a second release succeeds
+   too. If the output is not `RELEASED`, or the exit status is 1, the run is still held: run it again once. If it still
+   fails, report the stderr verbatim as `needs_user`, naming the pid in `<run-dir>/harness.pid`. Do not kill processes
+   by hand.
+2. `RELEASED` already includes the port check; look a second time. With `TALLY_PORT` from `<run-dir>/ports.env`:
+   `ss -ltnH "sport = :<port>"` (Linux) or `lsof -nP -iTCP:<port> -sTCP:LISTEN` (macOS) prints nothing when the port
+   is free. Output means something still listens: `needs_user`, quoting it. When `ports.env` is unreadable, skip this
+   look: the `RELEASED` already includes the check.
+3. If you came here from step 5, or 6.1 or 6.2 failed: stop. Return `needs_user` with the exact error and the fix, and
+   do not fix code. Otherwise decide as step 4 says.
+
+Never end a turn with a run held. Never stop a server, delete a database under `data/` or remove a file of
+`<run-dir>` by hand: only `just release` ends the hold.
+
+## Report
+
+Your final report (the verify turn's own, above its `OUTCOME` line; not an investigation's result) states, in this
+order:
+
+1. Each `/investigate local` call: the scenario folder and its result, quoted, a result with a label quoted with its
+   label line first, at the start of a line of its own (`UNRESOLVED: …`, `HOLD_ENDED: …` or `BLOCKED: …`), as the
+   result begins: the values used, the `tally-local` calls (tool, `database`, `port`, `path` or `sql`), the quoted
+   rows or responses, and the cause.
+2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
+   (more than 10, or the time limit), and which of those you fixed from the files. Every one of them on its own line,
+   with its full scenario id and its title from `summary.md`, never shortened to a number or a span of numbers:
+
+       Unresolved:
+       - `<NN-name>`: <title>: UNRESOLVED: <what is unknown>
+       Interrupted:
+       - `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>
+       Not investigated (more than 10 failures, or the time limit):
+       | FAIL | <NN-name> | <title> | [folder](scenarios/<NN-name>/) |
+       | FAIL | <NN-name> | <title> | [folder](scenarios/<NN-name>/) |
+       Fixed from the files: `<NN-name>`, … (or none)
+
+   For the scenarios not investigated, copy each one's `FAIL` row of `summary.md` into the report as it stands, every
+   row, however many: a summary of them in words or numbers does not list them. A heading with nothing under it is
+   left out. Write this list as the block above shows it, even for one scenario: each heading on its own line, and
+   under it each scenario on a line of its own (the `- ` line for an unresolved or interrupted one, the copied `FAIL`
+   row of `summary.md` for one not investigated), never inside a sentence; prose about them goes elsewhere in the
+   report.
+3. The `just release` output (`RELEASED`) and the port check result.
