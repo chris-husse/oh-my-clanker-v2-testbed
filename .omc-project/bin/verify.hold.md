@@ -10,6 +10,10 @@ until it is released. Never kill the run. You end the hold with `just release` (
 the release, continue with your loop (step 5 of the terminal: rerun what the fixes fixed, then a fresh full run from
 its step 1). Never rerun the gate while the run is held.
 
+The order is always the same: first every investigation step 2 chose, one `/investigate local` call per scenario, the
+held scenario first; then one release (step 6); then your loop. A `BLOCKED:` anywhere ends the investigations: the
+release at once (step 6) and `needs_user` (step 5).
+
 The investigation is `/investigate local`. Its WHERE (the `tally-local` namespace, the parameters and the files they
 come from, the read-only and no-fallback rules, the `BLOCKED:`, `UNRESOLVED:` and `HOLD_ENDED:` results, the report
 shape) is `omc/hook/investigation/investigation-context.local.md`; this note holds only the lifecycle around it. The
@@ -66,8 +70,9 @@ The result starts with one label, or is a diagnosis:
   step 4;
 - `BLOCKED: <cause>`: a tooling or access failure, a missing lead or missing input: step 5.
 
-`/investigate local` runs inline, in this turn: its result returns to you. Go on with step 4 or 5 and the release
-(step 6) at once, in the same turn; the result is never the end of the turn.
+`/investigate local` runs inline, in this turn: its result returns to you. Go on at once, in the same turn: after
+`BLOCKED:`, with step 5; otherwise with the next scenario step 2 chose, else with step 4 and the release (step 6). The
+result is never the end of the turn.
 
 If `/investigate local` cannot be run (the skill is missing, the Skill tool is unavailable), refuses, prints its usage,
 or returns `BLOCKED:`, that is BLOCKED: step 5. Never investigate in place of `/investigate local` a scenario the note
@@ -120,9 +125,9 @@ it fails closed by intent.
 
 ## 6. Always release, even when the investigation errors
 
-Do this on every path out of the investigation: done, time limit, `HOLD_ENDED:`, BLOCKED or error. Release as soon as
-every investigation step 2 chose has returned (or step 4 or 5 stopped them), even when the first result already
-explains the others; do not wait for more. No investigation starts after the release (step 3 needs the hold).
+Do this on every path out of the investigation: done, time limit, `HOLD_ENDED:`, BLOCKED or error. Release once, as
+soon as every investigation step 2 chose has returned (or step 4 or 5 stopped them), even when the first result
+already explains the others; do not wait for more. No investigation starts after the release (step 3 needs the hold).
 
 1. Run `just release --report-dir "<run-dir>"` (it runs `node scripts/release.mjs --report-dir "<run-dir>"`). It
    signals the held runner, waits up to 120 seconds for it to exit, and prints `RELEASED` only when it is gone and the
@@ -144,13 +149,21 @@ Never end a turn with a run held. Never stop a server, delete a database under `
 
 State, in this order:
 
-1. Each `/investigate local` call: the scenario folder and its result, quoted: the values used, the `tally-local` calls
-   (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and the cause.
+1. Each `/investigate local` call: the scenario folder and its result, quoted (with its label, when it has one): the
+   values used, the `tally-local` calls (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and
+   the cause.
 2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
    (more than 10, or the time limit), and which of those you fixed from the files. Every one of them on its own line,
    its full scenario id first, then its title from `summary.md`, never shortened to a number or a span of numbers:
 
-       Not investigated (more than 10 failures):
+       Unresolved:
+       - `<NN-name>`: <title>: UNRESOLVED: <what is unknown>
+       Interrupted:
+       - `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>
+       Not investigated (more than 10 failures, or the time limit):
        - `<NN-name>`: <title>
        - `<NN-name>`: <title>
+       Fixed from the files: `<NN-name>`, … (or none)
+
+   A heading with nothing under it is left out.
 3. The `just release` output (`RELEASED`) and the port check result.

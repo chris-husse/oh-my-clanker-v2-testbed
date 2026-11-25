@@ -242,6 +242,19 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
     assert.ok(hold.includes(text), `verify.hold.md names ${text}`);
   }
   assert.doesNotMatch(hold, /conductor's job|not a tool call of yours/);
+  // one order throughout: every chosen investigation (the held scenario first), then one release, then the loop;
+  // BLOCKED anywhere: the release at once and needs_user
+  const flat = hold.replace(/\s+/g, ' ');
+  for (const text of [
+    'The order is always the same: first every investigation step 2 chose, one `/investigate local` call per scenario, the held scenario first; then one release (step 6); then your loop.',
+    'A `BLOCKED:` anywhere ends the investigations: the release at once (step 6) and `needs_user` (step 5).',
+    'with the next scenario step 2 chose, else with step 4 and the release (step 6)',
+  ]) {
+    assert.ok(flat.includes(text), `verify.hold.md says ${text}`);
+  }
+  assert.doesNotMatch(flat, /Go on with step 4 or 5 and the release \(step 6\) at once/);
+  assert.ok(flat.includes('- `<NN-name>`: <title>: UNRESOLVED: <what is unknown>'), 'the report form covers UNRESOLVED');
+  assert.ok(flat.includes('- `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>'), 'and the interrupted ones');
   const notes = read('bin/verify.md');
   for (const text of ['--failed-only', 'args: --failed-only', 'only a fresh full run', '`silence`', 'verify` slot']) {
     assert.ok(notes.includes(text), `verify.md names ${text}`);
