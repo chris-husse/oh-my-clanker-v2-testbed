@@ -23,3 +23,11 @@ scenario's server and database alive, writes `harness.pid` and `harness.holding`
 `OMC_HOLD <run dir>` every `TALLY_HOLD_BEAT` seconds (default 30) until `just release`, a
 signal, or `TALLY_HOLD_TIMEOUT` seconds (default 1800). `TALLY_BACKDATE_HOLD=<seconds>`
 backdates `harness.pid`, whose mtime is the hold's start.
+
+## The omc project overlay
+
+`.omc-project/` is what this project owns inside `omc/` once oh-my-clanker v2 is installed: the gates
+`bin/check`, `bin/build` (`dist/tally.mjs`, via `scripts/build.mjs`) and `bin/verify [--failed-only]` (lint, unit,
+e2e; failed steps recorded under `.cache/verify/failed/` by `scripts/failed.mjs`), their notes `bin/verify.md` and
+`bin/verify.hold.md`, the briefing `hook/investigation/investigation-context.local.md`, `config.yaml` and
+`AGENTS.md`. Copied into `omc/`, the gates run from `omc/bin/`.

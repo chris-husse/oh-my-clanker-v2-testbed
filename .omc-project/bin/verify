@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# The milestone gate: lint (`node --check`), the unit tests, then the e2e scenarios, cheapest first. Pass or fail is
+# the exit code.
+#
+#   omc/bin/verify               every step
+#   omc/bin/verify --failed-only only the steps the last attempt recorded as failed, each narrowed to what failed
+#                                (the gate runner withholds a pass for any run with arguments)
+#
+# A failing step is recorded under .cache/verify/failed/ (scripts/failed.mjs) and the script stops there, so an
+# attempt records at most its first failure. Every step streams its output straight to stdout and stderr: the gate
+# tails them live, and a held e2e run (--keep-alive-on-failure) prints its OMC_HOLD line while still running.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+rerun=0
+case "$#:${1-}" in
+  0:) ;;
+  1:--failed-only) rerun=1 ;;
+  *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
+esac
+
+failed() { node scripts/failed.mjs "$@"; }
+
+# recorded <has|any> [step]: the helper answers 0 (yes) or 1 (no); any other status is a crash and ends the script.
+recorded() {
+  local status=0
+  failed "$@" || status=$?
+  case "$status" in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) echo "verify: the helper failed with status $status: $*" >&2; exit "$status" ;;
+  esac
+}
+
+known_steps=" lint unit e2e "
+
+if [ "$rerun" = 1 ]; then
+  if ! recorded any; then
+    echo "verify --failed-only: nothing recorded to rerun" >&2
+    exit 1
+  fi
+  recorded_steps=$(failed list)
+  for recorded_step in $recorded_steps; do
+    case "$known_steps" in
+      *" $recorded_step "*) ;;
+      *) echo "verify --failed-only: the record of unknown step $recorded_step is in .cache/verify/failed/; remove it or fix the script" >&2; exit 1 ;;
+    esac
+  done
+fi
+mkdir -p .cache/verify
+
+tap_log=.cache/verify/unit.tap
+summary=target/e2e-runs/summary.md
+
+# record_failure <step>: unit records its failing test names, e2e its FAIL scenario ids, lint the whole step. A step
+# whose ids cannot be read is recorded whole, and says so.
+record_failure() {
+  local step=$1 parsed="" id ids=()
+  case "$step" in
+    unit) parsed=$(failed parse-tap "$tap_log") || return 1 ;;
+    e2e) parsed=$(failed parse-summary "$summary") || return 1 ;;
+  esac
+  while IFS= read -r id; do
+    [ -n "$id" ] && ids+=("$id")
+  done <<<"$parsed"
+  if [ "$step" != lint ] && [ "${#ids[@]}" = 0 ]; then
+    echo "verify: no failing $step ids could be read; recording the whole step" >&2
+  fi
+  failed record "$step" ${ids[@]+"${ids[@]}"}
+}
+
+# step <name> <command...>: run the command with its output untouched; a pass clears the step's record, a failure
+# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
+step() {
+  local name=$1 status=0
+  shift
+  if [ "$rerun" = 1 ] && ! recorded has "$name"; then
+    return 0
+  fi
+  echo "verify: $name" >&2
+  "$@" || status=$?
+  if [ "$status" -ne 0 ]; then
+    record_failure "$name" || echo "verify: could not record the failure of $name" >&2
+    exit "$status"
+  fi
+  failed clear "$name"
+}
+
+# The commands below run with `set -e` off when step calls them, so a function must end on its first failure itself.
+lint() {
+  local file status=0
+  while IFS= read -r file; do
+    node --check "$file" || status=1
+  done < <(find src -name '*.js' | sort; printf '%s\n' bin/tally scripts/*.mjs mcp/*.mjs)
+  return "$status"
+}
+
+# unit: a rerun runs only the recorded test names, or every unit test when the record has none.
+unit() {
+  local patterns="" pattern args=()
+  if [ "$rerun" = 1 ]; then
+    recorded has unit || return 0
+    patterns=$(failed name-patterns unit)
+    while IFS= read -r pattern; do
+      [ -n "$pattern" ] && args+=(--test-name-pattern "$pattern")
+    done <<<"$patterns"
+  fi
+  rm -f "$tap_log"
+  step unit node --disable-warning=ExperimentalWarning --test \
+    --test-reporter=spec --test-reporter-destination=stdout \
+    --test-reporter=tap --test-reporter-destination="$tap_log" \
+    ${args[@]+"${args[@]}"} 'test/unit/*.test.js'
+}
+
+# e2e: a rerun runs only the recorded scenario ids (--only), or every scenario when the record has none.
+e2e() {
+  local ids="" args=()
+  if [ "$rerun" = 1 ]; then
+    recorded has e2e || return 0
+    ids=$(failed ids e2e | paste -sd, -)
+    [ -n "$ids" ] && args=(--only "$ids")
+  fi
+  step e2e node --disable-warning=ExperimentalWarning scripts/e2e.mjs --keep-alive-on-failure ${args[@]+"${args[@]}"}
+}
+
+step lint lint
+unit
+e2e
+
+if [ "$rerun" = 1 ]; then
+  echo "verify --failed-only: every recorded step passes now; only a full run gives the verdict" >&2
+fi
