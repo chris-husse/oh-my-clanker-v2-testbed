@@ -38,7 +38,8 @@ The held scenario is the one whose `output.txt` has the line `database <TALLY_DB
 `<run-dir>/stack.env`: only it has a live server and database. Investigate it first.
 
 Up to 10 failing scenarios: investigate each in turn. More than 10: the held scenario and a sample of 2 to 4 more, taken
-from different scenario files; the rest listed by scenario id and title as not investigated.
+from different scenario files; the rest listed as not investigated, each on its own line by its scenario id and title
+(`<NN-name>: <title>`, from `summary.md`), never as a range or a count.
 
 ## 3. Investigate, one scenario per call
 
@@ -144,5 +145,6 @@ State, in this order:
 1. Each `/investigate local` call: the scenario folder and its result, quoted: the values used, the `tally-local` calls
    (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and the cause.
 2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
-   (more than 10, or the time limit), by scenario id and title; and which of those you fixed from the files.
+   (more than 10, or the time limit), each on its own line by scenario id and title, never as a range or a count; and
+   which of those you fixed from the files.
 3. The `just release` output (`RELEASED`) and the port check result.
