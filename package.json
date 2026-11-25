@@ -8,6 +8,6 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "test": "node --test --disable-warning=ExperimentalWarning test/unit/*.test.js"
+    "test": "node --test --disable-warning=ExperimentalWarning 'test/unit/*.test.js' 'test/protocol/*.test.js'"
   }
 }
