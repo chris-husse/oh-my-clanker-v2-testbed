@@ -37,9 +37,10 @@ for the failing scenarios (each `<testcase>` with a `<failure>`; its `name` is t
 The held scenario is the one whose `output.txt` has the line `database <TALLY_DB_PATH>`, with `TALLY_DB_PATH` from
 `<run-dir>/stack.env`: only it has a live server and database. Investigate it first.
 
-Up to 10 failing scenarios: investigate each in turn. More than 10: the held scenario and a sample of 2 to 4 more, taken
-from different scenario files; the rest listed as not investigated, each on its own line by its scenario id and title
-(`<NN-name>: <title>`, from `summary.md`), never as a range or a count.
+Up to 10 failing scenarios: investigate each in turn. More than 10: investigate the held scenario and a sample of 2 to 4
+more, taken from different scenario files: 3 to 5 `/investigate local` calls in all, one per scenario (a scenario only
+read from its files, without a call of its own, is not investigated). The rest are not investigated: the report lists
+each of them on its own line, `<NN-name>: <title>` (from `summary.md`); a range (`08–11`) or a count lists none.
 
 ## 3. Investigate, one scenario per call
 
