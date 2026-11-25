@@ -9,6 +9,8 @@ suite to clone. The generator reads the patches from the committed `main`, so co
 | `vanilla` (no patch) | `vanilla` | `main` without `.omc-project/`, `scenarios/` and the generator |
 | `fault-e2e-red` | `fault/e2e-red` | `balance()` ignores debits; only e2e `02-balance-sums` fails, lint and unit tests stay green |
 | `fault-blind-db` | `fault/blind-db` | `post()` stores the account of an entry whose memo starts with `refund` lower-cased; only e2e `05-refund-memo` fails (`expected 1050, got 600`), the cause shows only in the held database (see below) |
+| `fault-blind-http` | `fault/blind-http` | `GET /balance` looks the account up with `+` read as a space; only e2e `06-supplier-balance` fails (`expected 100, got 0`), the cause shows only in the held server's `last_request` (see below) |
+| `fault-blind-state` | `fault/blind-state` | a post invalidates the cached balance under the lower-cased account; only e2e `06-supplier-balance` fails (`expected 600, got 100`), the cause shows only in the held server's `cache` counters (see below) |
 | `scenario-shell-gate` | `scenario/shell-gate` | the overlay's `omc/bin/verify` is a plain POSIX shell script (`sh omc/bin/unit.sh`, `sh omc/bin/e2e.sh`) writing and reading the same `.cache/verify/failed/<step>` records and keeping the same `--failed-only` contract; the project is green |
 
 Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without the scenario- prefix>`.
@@ -55,3 +57,37 @@ Why it satisfies the rules of the blind faults:
 
 `test/protocol/branches.test.js` (`fault/blind-db: …`) proves all five on the generated branch, through
 `tally-local` on the held run.
+
+## The server's in-memory view: `fault-blind-http` and `fault-blind-state`
+
+`GET /state` answers the database's counters and what the server keeps in memory only (`src/server.js`, `View`):
+`cache` (`hits`, `misses`, `invalidations` of its balance cache) and `last_request` (the last request it handled,
+`GET /state` left out, with the `account` it used). No run file holds them: `state.json` is the database's
+`state()` and its last 20 entries. Both faults fail `e2e/scenarios/06-supplier-balance.mjs` (on `main`, green there,
+the last scenario in run order): it posts a deposit of 100 to `Kestrel+Sons`, reads the balance (expects 100), posts
+25 daily credits of 20 and reads it again (expects 600).
+
+`fault-blind-http`, in `getBalance` (three lines): the lookup key is `decodeURIComponent(segment.replace(/\+/g, ' '))`,
+the response still echoes the account as given. The first read fails `expected 100, got 0`.
+
+1. Lint and the unit tests stay green: the unit tests send accounts URI-encoded (`A%2BB`), never a bare `+`.
+2. Only `06-supplier-balance` fails; it is the only scenario with a `+` in an account.
+3. The message is numbers only.
+4. The marker **`Kestrel Sons`** is in the held server's `last_request.account` only (`http_get /state`). The
+   database holds one row, `Kestrel+Sons | 100`; `output.txt` shows `< 200 {"account":"Kestrel+Sons","cents":0}`;
+   `http_get /balance/Kestrel+Sons` answers the same. Database and service disagree, the database shows no cause.
+5. The fix looks the account up as decoded (the file as on `main`).
+
+`fault-blind-state`, in `View.posted` (one line): the cached balance is deleted under `account.toLowerCase()`, so a
+mixed-case account's cached balance is never invalidated. The second read fails `expected 600, got 100`.
+
+1. Lint and the unit tests stay green: the unit tests' cache case uses a lower-case account.
+2. Only `06-supplier-balance` reads a balance between posts to a mixed-case account.
+3. The message is numbers only.
+4. The marker **`"invalidations":0`** is in the held server's `cache` counters only (`http_get /state`:
+   `{"hits":1,"misses":1,"invalidations":0}` after 25 posts to a cached account). The database holds the 26 rows,
+   600 cents in all, exactly as posted; no run file names the cache.
+5. The fix deletes the cached balance under the account as given (the file as on `main`).
+
+`test/protocol/branches.test.js` (`fault/blind-http: …`, `fault/blind-state: …`) proves all five on the generated
+branches through `tally-local` on the held run, including that a `db_query` of the held database shows no marker.

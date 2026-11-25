@@ -1,0 +1,13 @@
+diff --git a/src/server.js b/src/server.js
+index b2a20ad..6bdbd89 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -57,7 +57,7 @@ class View {
+   }
+ 
+   posted(account) {
+-    if (this.balances.delete(account)) this.cache.invalidations += 1;
++    if (this.balances.delete(account.toLowerCase())) this.cache.invalidations += 1;
+   }
+ }
+ 

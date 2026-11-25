@@ -1,0 +1,16 @@
+diff --git a/src/server.js b/src/server.js
+index b2a20ad..192d262 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -75,8 +75,9 @@ async function postEntry(db, view, req, res) {
+ 
+ function getBalance(db, view, segment, res) {
+   const account = decodeURIComponent(segment);
+-  view.lastRequest = { method: 'GET', path: `/balance/${segment}`, account };
+-  send(res, 200, { account, cents: view.balance(db, account) });
++  const key = decodeURIComponent(segment.replace(/\+/g, ' '));
++  view.lastRequest = { method: 'GET', path: `/balance/${segment}`, account: key };
++  send(res, 200, { account, cents: view.balance(db, key) });
+ }
+ 
+ function getState(db, view, res) {

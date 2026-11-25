@@ -245,6 +245,113 @@ test('fault/blind-db: lint and unit green, only 05-refund-memo red with numbers 
   }
 });
 
+// A generated fault branch held on its failing scenario: the checkout, the runner's stdout up to the hold, the run
+// dir, the held port and a tally-local client on the run; close() ends it.
+async function heldBranch(id, branch) {
+  const dir = testbed();
+  assert.equal(generate(dir, id).status, 0);
+  const checkout = join(dir, 'checkout');
+  git(dir, 'clone', '--quiet', '--branch', branch, dir, checkout);
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const run = (...args) => spawnSync('node', args, { cwd: checkout, encoding: 'utf8', env });
+  for (const file of ['src/db.js', 'src/ledger.js', 'src/server.js', 'bin/tally', 'scripts/e2e.mjs', 'mcp/tally-mcp.mjs']) {
+    assert.equal(run('--check', file).status, 0, file);
+  }
+  const unit = run('--test', '--disable-warning=ExperimentalWarning', 'test/unit/*.test.js');
+  assert.equal(unit.status, 0, unit.stdout + unit.stderr);
+  const child = spawn('node', ['--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs', '--keep-alive-on-failure'], {
+    cwd: checkout,
+    env: { ...env, TALLY_HOLD_TIMEOUT: '30', TALLY_HOLD_BEAT: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const exited = new Promise((done) => child.on('exit', done));
+  const held = { checkout, runDir: join(checkout, 'target/e2e-runs') };
+  held.close = async () => {
+    held.mcp?.close();
+    child.kill('SIGTERM');
+    await exited;
+  };
+  try {
+    held.out = await untilHold(child);
+    held.port = Number(/^TALLY_PORT=(\d+)$/m.exec(readFileSync(join(held.runDir, 'ports.env'), 'utf8'))[1]);
+    held.mcp = await mcpClient(checkout);
+    return held;
+  } catch (error) {
+    await held.close();
+    throw error;
+  }
+}
+
+const RESULTS = (failure) => [
+  'PASS 01-post-entry',
+  'PASS 02-balance-sums',
+  'PASS 03-state-endpoint',
+  'PASS 04-cli-roundtrip',
+  'PASS 05-refund-memo',
+  `FAIL 06-supplier-balance: ${failure}`,
+];
+const SUPPLIER_FILES = ['summary.md', 'junit.xml', 'scenarios/06-supplier-balance/output.txt',
+  'scenarios/06-supplier-balance/state.json'];
+
+// The held run's own files and the runner's output never show `marker`; stack.env names 06's database; that
+// database's rows are exactly the scenario's posts, all to Kestrel+Sons (nothing in them shows the cause).
+async function assertBlindToFilesAndDb(held, marker, { rows, cents }) {
+  const results = held.out.split('\n').filter((line) => /^(PASS|FAIL) /.test(line));
+  for (const file of SUPPLIER_FILES) {
+    assert.ok(!readFileSync(join(held.runDir, file), 'utf8').includes(marker), `${file} shows the cause`);
+  }
+  assert.ok(!held.out.includes(marker), 'the runner output shows the cause');
+  assert.equal(readFileSync(join(held.runDir, 'stack.env'), 'utf8'),
+    'TALLY_DATABASE=tally_06_supplier_balance\nTALLY_DB_PATH=data/tally_06_supplier_balance.db\n');
+  const all = await held.mcp.call('db_query', { database: 'tally_06_supplier_balance', sql: 'SELECT * FROM entries' });
+  assert.equal(all.isError, false, all.text);
+  assert.ok(!all.text.includes(marker), 'the database shows the cause');
+  const grouped = await held.mcp.call('db_query', {
+    database: 'tally_06_supplier_balance',
+    sql: 'SELECT account, COUNT(*), SUM(cents) FROM entries GROUP BY account',
+  });
+  assert.deepEqual(JSON.parse(grouped.text).rows, [['Kestrel+Sons', rows, cents]]);
+  return results;
+}
+
+// The blind HTTP fault (scenarios/README.md): GET /balance looks the account up with `+` read as a space. Only the
+// held server's last_request shows it.
+const HTTP_MARKER = 'Kestrel Sons';
+
+test('fault/blind-http: lint and unit green, only 06 red with numbers only, the cause only in the held server', async () => {
+  const held = await heldBranch('fault-blind-http', 'fault/blind-http');
+  try {
+    const results = await assertBlindToFilesAndDb(held, HTTP_MARKER, { rows: 1, cents: 100 });
+    assert.deepEqual(results, RESULTS('expected 100, got 0'));
+    const balance = await held.mcp.call('http_get', { port: held.port, path: '/balance/Kestrel+Sons' });
+    assert.deepEqual(JSON.parse(balance.text), { status: 200, body: { account: 'Kestrel+Sons', cents: 0 } });
+    const state = await held.mcp.call('http_get', { port: held.port, path: '/state' });
+    assert.equal(state.isError, false, state.text);
+    assert.deepEqual(JSON.parse(state.text).body.last_request,
+      { method: 'GET', path: '/balance/Kestrel+Sons', account: HTTP_MARKER });
+  } finally {
+    await held.close();
+  }
+});
+
+// The blind state fault (scenarios/README.md): a post invalidates the cached balance under the lower-cased account,
+// so a mixed-case account's cached balance is never invalidated. Only the held server's cache counters show it.
+const STATE_MARKER = '"invalidations":0';
+
+test('fault/blind-state: lint and unit green, only 06 red with numbers only, the cause only in /state counters', async () => {
+  const held = await heldBranch('fault-blind-state', 'fault/blind-state');
+  try {
+    const results = await assertBlindToFilesAndDb(held, 'invalidations', { rows: 26, cents: 600 });
+    assert.deepEqual(results, RESULTS('expected 600, got 100'));
+    const state = await held.mcp.call('http_get', { port: held.port, path: '/state' });
+    assert.equal(state.isError, false, state.text);
+    assert.ok(state.text.includes(STATE_MARKER), state.text);
+    assert.deepEqual(JSON.parse(state.text).body.cache, { hits: 1, misses: 1, invalidations: 0 });
+  } finally {
+    await held.close();
+  }
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -268,9 +375,10 @@ test('--push only pushes the generated branches, never main', () => {
 test('generated trees hold no trace of the generator, its test or any scenario id', () => {
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
-  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'branches.test.js', 'scenarios/fault',
-    'scenarios/scenario'];
-  for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db']) {
+  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state',
+    'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+  for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
+    'fault/blind-state']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
