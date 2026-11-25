@@ -1,0 +1,272 @@
+diff --git a/.omc-project/bin/e2e.sh b/.omc-project/bin/e2e.sh
+new file mode 100644
+index 0000000..5c9da3d
+--- /dev/null
++++ b/.omc-project/bin/e2e.sh
+@@ -0,0 +1,5 @@
++# The e2e step of omc/bin/verify: the scenarios of e2e/scenarios/, a failure held (--keep-alive-on-failure, the
++# OMC_HOLD protocol of scripts/e2e.mjs). Extra arguments go to the runner (`--only <id,id>`).
++#
++#   sh omc/bin/e2e.sh [scripts/e2e.mjs arguments…]
++exec node --disable-warning=ExperimentalWarning scripts/e2e.mjs --keep-alive-on-failure "$@"
+diff --git a/.omc-project/bin/unit.sh b/.omc-project/bin/unit.sh
+new file mode 100644
+index 0000000..e0ed421
+--- /dev/null
++++ b/.omc-project/bin/unit.sh
+@@ -0,0 +1,9 @@
++# The unit step of omc/bin/verify: every unit test, its spec output to stdout and its TAP log to
++# .cache/verify/unit.tap (the gate reads the failing names from it). Extra arguments go to `node --test` before the
++# test files (`--test-name-pattern <regex>`).
++#
++#   sh omc/bin/unit.sh [node --test arguments…]
++exec node --disable-warning=ExperimentalWarning --test \
++  --test-reporter=spec --test-reporter-destination=stdout \
++  --test-reporter=tap --test-reporter-destination=.cache/verify/unit.tap \
++  "$@" 'test/unit/*.test.js'
+diff --git a/.omc-project/bin/verify b/.omc-project/bin/verify
+index eb41c9d..71311d9 100755
+--- a/.omc-project/bin/verify
++++ b/.omc-project/bin/verify
+@@ -1,16 +1,17 @@
+-#!/usr/bin/env bash
+-# The milestone gate: lint (`node --check`), the unit tests, then the e2e scenarios, cheapest first. Pass or fail is
+-# the exit code.
++#!/bin/sh
++# The milestone gate as a plain POSIX shell script: lint (`node --check`), the unit tests (`sh omc/bin/unit.sh`), then
++# the e2e scenarios (`sh omc/bin/e2e.sh`), cheapest first. Pass or fail is the exit code.
+ #
+ #   omc/bin/verify               every step
+ #   omc/bin/verify --failed-only only the steps the last attempt recorded as failed, each narrowed to what failed
+ #                                (the gate runner withholds a pass for any run with arguments)
+ #
+-# A failing step is recorded under .cache/verify/failed/ (scripts/failed.mjs) and the script stops there, so an
+-# attempt records at most its first failure. Every step streams its output straight to stdout and stderr: the gate
+-# tails them live, and a held e2e run (--keep-alive-on-failure) prints its OMC_HOLD line while still running.
+-set -euo pipefail
+-cd "$(dirname "$0")/../.."
++# A failing step is recorded as the file .cache/verify/failed/<step>, one id per line (an empty file: the whole
++# step), and the script stops there, so an attempt records at most its first failure. The records are read and written
++# here, by the shell alone. Every step streams its output straight to stdout and stderr: the gate tails them live, and
++# a held e2e run (--keep-alive-on-failure) prints its OMC_HOLD line while still running.
++set -u
++cd "$(dirname "$0")/../.." || exit 2
+ 
+ rerun=0
+ case "$#:${1-}" in
+@@ -18,114 +19,118 @@ case "$#:${1-}" in
+   1:--failed-only) rerun=1 ;;
+   *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
+ esac
++set --
+ 
+-failed() { node scripts/failed.mjs "$@"; }
++records=.cache/verify/failed
++tap_log=.cache/verify/unit.tap
++summary=target/e2e-runs/summary.md
++known_steps=" lint unit e2e "
+ 
+-# recorded <has|any> [step]: the helper answers 0 (yes) or 1 (no); any other status is a crash and ends the script.
+-recorded() {
+-  local status=0
+-  failed "$@" || status=$?
+-  case "$status" in
+-    0) return 0 ;;
+-    1) return 1 ;;
+-    *) echo "verify: the helper failed with status $status: $*" >&2; exit "$status" ;;
+-  esac
++# the recorded steps, one per line (a file name that is not a step name is no record)
++recorded_steps() {
++  [ -d "$records" ] || return 0
++  ls -1 "$records" | grep -E '^[a-z0-9][a-z0-9-]*$'
+ }
+ 
+-known_steps=" lint unit e2e "
+-
+ if [ "$rerun" = 1 ]; then
+-  if ! recorded any; then
++  steps=$(recorded_steps)
++  if [ -z "$steps" ]; then
+     echo "verify --failed-only: nothing recorded to rerun" >&2
+     exit 1
+   fi
+-  recorded_steps=$(failed list)
+-  for recorded_step in $recorded_steps; do
++  for recorded_step in $steps; do
+     case "$known_steps" in
+       *" $recorded_step "*) ;;
+-      *) echo "verify --failed-only: the record of unknown step $recorded_step is in .cache/verify/failed/; remove it or fix the script" >&2; exit 1 ;;
++      *) echo "verify --failed-only: the record of unknown step $recorded_step is in $records/; remove it or fix the script" >&2; exit 1 ;;
+     esac
+   done
+ fi
+ mkdir -p .cache/verify
+ 
+-tap_log=.cache/verify/unit.tap
+-summary=target/e2e-runs/summary.md
++# unit_ids: the failing top-level test names of the TAP log, unescaped; none when a test file failed (its name a path
++# ending in .js), so that the whole step is recorded
++unit_ids() {
++  [ -f "$tap_log" ] || return 0
++  grep -Eq '^not ok [0-9]+ - .*\.[cm]?js$' "$tap_log" && return 0
++  sed -n -E 's/^not ok [0-9]+ - (.*)$/\1/p' "$tap_log" | sed -E 's/ # (SKIP|TODO).*$//; s/\\(.)/\1/g' | awk '!seen[$0]++'
++}
++
++# e2e_ids: the scenario ids of the `| FAIL | <id> | …` rows of the e2e summary
++e2e_ids() {
++  [ -f "$summary" ] || return 0
++  sed -n -E 's/^\|[[:space:]]*FAIL[[:space:]]*\|[[:space:]]*([^|[:space:]]+)[[:space:]]*\|.*$/\1/p' "$summary"
++}
+ 
+ # record_failure <step>: unit records its failing test names, e2e its FAIL scenario ids, lint the whole step. A step
+ # whose ids cannot be read is recorded whole, and says so.
+ record_failure() {
+-  local step=$1 parsed="" id ids=()
+-  case "$step" in
+-    unit) parsed=$(failed parse-tap "$tap_log") || return 1 ;;
+-    e2e) parsed=$(failed parse-summary "$summary") || return 1 ;;
++  ids=""
++  case "$1" in
++    unit) ids=$(unit_ids) ;;
++    e2e) ids=$(e2e_ids) ;;
+   esac
+-  while IFS= read -r id; do
+-    [ -n "$id" ] && ids+=("$id")
+-  done <<<"$parsed"
+-  if [ "$step" != lint ] && [ "${#ids[@]}" = 0 ]; then
+-    echo "verify: no failing $step ids could be read; recording the whole step" >&2
++  mkdir -p "$records"
++  if [ -n "$ids" ]; then
++    printf '%s\n' "$ids" >"$records/$1.tmp" && mv "$records/$1.tmp" "$records/$1"
++    echo "verify: recorded $1: $(printf '%s' "$ids" | paste -sd, - | sed 's/,/, /g')" >&2
++  else
++    [ "$1" = lint ] || echo "verify: no failing $1 ids could be read; recording the whole step" >&2
++    : >"$records/$1"
++    echo "verify: recorded $1 (the whole step)" >&2
+   fi
+-  failed record "$step" ${ids[@]+"${ids[@]}"}
+ }
+ 
+ # step <name> <command...>: run the command with its output untouched; a pass clears the step's record, a failure
+ # records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
+ step() {
+-  local name=$1 status=0
++  name=$1
+   shift
+-  if [ "$rerun" = 1 ] && ! recorded has "$name"; then
++  if [ "$rerun" = 1 ] && [ ! -e "$records/$name" ]; then
+     return 0
+   fi
+   echo "verify: $name" >&2
+-  "$@" || status=$?
++  "$@"
++  status=$?
+   if [ "$status" -ne 0 ]; then
+-    record_failure "$name" || echo "verify: could not record the failure of $name" >&2
++    record_failure "$name"
+     exit "$status"
+   fi
+-  failed clear "$name"
++  rm -f "$records/$name"
+ }
+ 
+-# The commands below run with `set -e` off when step calls them, so a function must end on its first failure itself.
+ lint() {
+-  local file status=0
+-  while IFS= read -r file; do
+-    node --check "$file" || status=1
+-  done < <(find src -name '*.js' | sort; printf '%s\n' bin/tally scripts/*.mjs mcp/*.mjs)
+-  return "$status"
+-}
+-
+-# unit: a rerun runs only the recorded test names, or every unit test when the record has none.
+-unit() {
+-  local patterns="" pattern args=()
+-  if [ "$rerun" = 1 ]; then
+-    recorded has unit || return 0
+-    patterns=$(failed name-patterns unit)
+-    while IFS= read -r pattern; do
+-      [ -n "$pattern" ] && args+=(--test-name-pattern "$pattern")
+-    done <<<"$patterns"
+-  fi
+-  rm -f "$tap_log"
+-  step unit node --disable-warning=ExperimentalWarning --test \
+-    --test-reporter=spec --test-reporter-destination=stdout \
+-    --test-reporter=tap --test-reporter-destination="$tap_log" \
+-    ${args[@]+"${args[@]}"} 'test/unit/*.test.js'
++  { find src -name '*.js' | sort; printf '%s\n' bin/tally scripts/*.mjs mcp/*.mjs; } | {
++    status=0
++    while IFS= read -r file; do
++      node --check "$file" || status=1
++    done
++    exit "$status"
++  }
+ }
+ 
+-# e2e: a rerun runs only the recorded scenario ids (--only), or every scenario when the record has none.
+-e2e() {
+-  local ids="" args=()
+-  if [ "$rerun" = 1 ]; then
+-    recorded has e2e || return 0
+-    ids=$(failed ids e2e | paste -sd, -)
+-    [ -n "$ids" ] && args=(--only "$ids")
+-  fi
+-  step e2e node --disable-warning=ExperimentalWarning scripts/e2e.mjs --keep-alive-on-failure ${args[@]+"${args[@]}"}
++# a regex matching the text exactly, for --test-name-pattern
++pattern_of() {
++  printf '%s' "$1" | sed 's#[][\\.*^$+?(){}|/]#\\&#g'
+ }
+ 
+ step lint lint
+-unit
+-e2e
++
++# unit: a rerun runs only the recorded test names (one --test-name-pattern each), or every test when the record is
++# empty
++if [ "$rerun" = 1 ] && [ -s "$records/unit" ]; then
++  while IFS= read -r id; do
++    [ -n "$id" ] && set -- "$@" --test-name-pattern "/^$(pattern_of "$id")\$/"
++  done <"$records/unit"
++fi
++rm -f "$tap_log"
++step unit sh omc/bin/unit.sh "$@"
++set --
++
++# e2e: a rerun runs only the recorded scenario ids (--only), or every scenario when the record is empty
++if [ "$rerun" = 1 ] && [ -s "$records/e2e" ]; then
++  set -- --only "$(grep -v '^$' "$records/e2e" | paste -sd, -)"
++fi
++step e2e sh omc/bin/e2e.sh "$@"
+ 
+ if [ "$rerun" = 1 ]; then
+   echo "verify --failed-only: every recorded step passes now; only a full run gives the verdict" >&2
+diff --git a/.omc-project/bin/verify.md b/.omc-project/bin/verify.md
+index 8b13761..5c0839c 100644
+--- a/.omc-project/bin/verify.md
++++ b/.omc-project/bin/verify.md
+@@ -1,8 +1,10 @@
+ # verify: notes on its reds
+ 
+-- **The steps, in order**: `lint` (`node --check` over `src/**/*.js`, `bin/tally`, `scripts/*.mjs`, `mcp/*.mjs`),
+-  `unit` (`node --test 'test/unit/*.test.js'`), `e2e` (`node scripts/e2e.mjs --keep-alive-on-failure`, every
+-  scenario of `e2e/scenarios/`). The script stops at the first failing step and exits with its status.
++- **The gate is a plain POSIX shell script** (`omc/bin/verify`, run by `sh`): no node helper reads or writes its
++  records. Its steps, in order: `lint` (`node --check` over `src/**/*.js`, `bin/tally`, `scripts/*.mjs`, `mcp/*.mjs`),
++  `unit` (`sh omc/bin/unit.sh`: `node --test 'test/unit/*.test.js'`, its TAP log in `.cache/verify/unit.tap`), `e2e`
++  (`sh omc/bin/e2e.sh`: `node scripts/e2e.mjs --keep-alive-on-failure`, every scenario of `e2e/scenarios/`). The
++  script stops at the first failing step and exits with its status.
+ - **`lint` or `unit` red inside `verify`** passed in `check`, which runs the same commands: explain it and fix it,
+   never just rerun it.
+ - **An e2e scenario's evidence** is its folder `target/e2e-runs/scenarios/<NN-name>/` (`output.txt`: every request
+@@ -11,8 +13,9 @@
+   scenarios never share state.
+ - **`--failed-only`** (`just omc gate run verify --failed-only`; to the `/verify` terminal, `args: --failed-only`):
+   reruns only what the last attempt recorded under `.cache/verify/failed/`, one file per failed step (`lint`, `unit`,
+-  `e2e`), one id per line. A recorded `e2e` reruns just its `FAIL` scenarios (`--only <id,id>`); a recorded `unit`
+-  reruns just its failing test names (`--test-name-pattern`); `lint` reruns whole. A step whose ids cannot be read (no
++  `e2e`), one id per line, written and read by the shell (`sed` over the TAP log and `summary.md`). A recorded
++  `e2e` reruns just its `FAIL` scenarios (`--only <id,id>`); a recorded `unit` reruns just its failing test names
++  (`--test-name-pattern`); `lint` reruns whole. A step whose ids cannot be read (no
+   `summary.md`, a test file that failed to load) is recorded as the whole step, says so, and reruns whole. A pass
+   clears a step's record; with no records the run exits 1 (`nothing recorded to rerun`) before doing anything. A
+   `--failed-only` run never gives the verdict: only a fresh full run on a clean tree does.

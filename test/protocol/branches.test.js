@@ -114,6 +114,27 @@ test('fault/e2e-red fails the e2e run and passes the unit tests and the syntax c
   assert.equal(run('--check', 'src/ledger.js').status, 0);
 });
 
+test('scenario/shell-gate: verify is a POSIX shell script with no node helper and keeps the overlay contract', () => {
+  const dir = testbed();
+  assert.equal(generate(dir, 'scenario-shell-gate').status, 0);
+  const checkout = join(dir, 'checkout');
+  git(dir, 'clone', '--quiet', '--branch', 'scenario/shell-gate', dir, checkout);
+  const verify = git(checkout, 'show', 'HEAD:.omc-project/bin/verify');
+  assert.match(verify, /^#!\/bin\/sh\n/);
+  assert.doesNotMatch(verify, /failed\.mjs|node -e|\[\[ |declare |local /, 'no node helper, no bash-only syntax');
+  assert.match(verify, /sh omc\/bin\/unit\.sh/);
+  assert.match(verify, /sh omc\/bin\/e2e\.sh/);
+  assert.equal(spawnSync('sh', ['-n', '.omc-project/bin/verify'], { cwd: checkout }).status, 0, 'parses as sh');
+  // the overlay's own contract tests (records, --failed-only, the hold) run against the shell gate
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const run = spawnSync('node', ['--test', '--disable-warning=ExperimentalWarning', 'test/protocol/overlay.test.js'], {
+    cwd: checkout,
+    encoding: 'utf8',
+    env,
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -137,8 +158,8 @@ test('--push only pushes the generated branches, never main', () => {
 test('generated trees hold no trace of the generator, its test or any scenario id', () => {
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
-  const needles = ['build-branches', 'e2e-red', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
-  for (const branch of ['vanilla', 'fault/e2e-red']) {
+  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+  for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
