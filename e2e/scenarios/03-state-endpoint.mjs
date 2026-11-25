@@ -13,6 +13,7 @@ export default {
     }
     const res = await fetch(`${base}/state`);
     expectEqual(res.status, 200);
-    expectEqual(await res.json(), { entries: 3, accounts: 2, total_cents: 550 });
+    const { entries, accounts, total_cents } = await res.json();
+    expectEqual({ entries, accounts, total_cents }, { entries: 3, accounts: 2, total_cents: 550 });
   },
 };

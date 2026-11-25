@@ -36,36 +36,67 @@ function validateEntry(body) {
   return null;
 }
 
-async function postEntry(db, req, res) {
+// What the server keeps in memory, never in the database: the balances it served since the last post to their
+// account, the cache's counters, and the last request it handled (GET /state left out), as it understood it.
+class View {
+  constructor() {
+    this.balances = new Map();
+    this.cache = { hits: 0, misses: 0, invalidations: 0 };
+    this.lastRequest = null;
+  }
+
+  balance(db, account) {
+    if (this.balances.has(account)) {
+      this.cache.hits += 1;
+      return this.balances.get(account);
+    }
+    this.cache.misses += 1;
+    const cents = balance(db, account);
+    this.balances.set(account, cents);
+    return cents;
+  }
+
+  posted(account) {
+    if (this.balances.delete(account)) this.cache.invalidations += 1;
+  }
+}
+
+async function postEntry(db, view, req, res) {
   const parsed = parseJson(await readBody(req));
   if (parsed.error) return send(res, 400, { error: parsed.error });
   const problem = validateEntry(parsed.value);
   if (problem) return send(res, 400, { error: problem });
   const { account, cents, memo } = parsed.value;
-  send(res, 201, post(db, { account, cents, memo }));
+  view.lastRequest = { method: 'POST', path: '/entries', account };
+  const created = post(db, { account, cents, memo });
+  view.posted(account);
+  send(res, 201, created);
 }
 
-function getBalance(db, account, res) {
-  send(res, 200, { account, cents: balance(db, account) });
+function getBalance(db, view, segment, res) {
+  const account = decodeURIComponent(segment);
+  view.lastRequest = { method: 'GET', path: `/balance/${segment}`, account };
+  send(res, 200, { account, cents: view.balance(db, account) });
 }
 
-function getState(db, res) {
-  send(res, 200, state(db));
+function getState(db, view, res) {
+  send(res, 200, { ...state(db), cache: { ...view.cache }, last_request: view.lastRequest });
 }
 
-async function route(db, req, res) {
+async function route(db, view, req, res) {
   const { pathname } = new URL(req.url, 'http://localhost');
-  if (req.method === 'POST' && pathname === '/entries') return postEntry(db, req, res);
+  if (req.method === 'POST' && pathname === '/entries') return postEntry(db, view, req, res);
   if (req.method === 'GET' && pathname.startsWith('/balance/')) {
-    return getBalance(db, decodeURIComponent(pathname.slice('/balance/'.length)), res);
+    return getBalance(db, view, pathname.slice('/balance/'.length), res);
   }
-  if (req.method === 'GET' && pathname === '/state') return getState(db, res);
+  if (req.method === 'GET' && pathname === '/state') return getState(db, view, res);
   send(res, 404, { error: 'not found' });
 }
 
 export function startServer({ db, port }) {
+  const view = new View();
   const server = createServer((req, res) => {
-    route(db, req, res).catch(() => send(res, 500, { error: 'internal error' }));
+    route(db, view, req, res).catch(() => send(res, 500, { error: 'internal error' }));
   });
   return new Promise((resolve, reject) => {
     server.once('error', reject);

@@ -135,7 +135,8 @@ test('a failed run holds: markers, beats, live service, then release', async () 
     const port = Number(envFile(join(dir, 'ports.env')).TALLY_PORT);
     const res = await fetch(`http://127.0.0.1:${port}/state`);
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { entries: 1, accounts: 1, total_cents: 1050 });
+    const { entries, accounts, total_cents } = await res.json();
+    assert.deepEqual({ entries, accounts, total_cents }, { entries: 1, accounts: 1, total_cents: 1050 });
 
     assert.deepEqual(envFile(join(dir, 'stack.env')), {
       TALLY_DATABASE: 'tally_90_red_balance',

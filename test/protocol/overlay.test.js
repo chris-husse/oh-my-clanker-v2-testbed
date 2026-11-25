@@ -147,7 +147,7 @@ test('verify passes on the baseline with no records, and clears a stale one', as
   assert.equal(verify.code, 0, verify.out + verify.err);
   assert.deepEqual(records(dir), {});
   assert.match(verify.out, /post and balance sum cents/, 'the unit tests ran');
-  assert.match(verify.out, /^5 passed, 0 failed/m);
+  assert.match(verify.out, /^6 passed, 0 failed/m);
   assert.doesNotMatch(verify.out, /OMC_HOLD/);
 });
 
@@ -173,7 +173,7 @@ test('a red e2e scenario holds, is recorded, and --failed-only reruns only it', 
   const rerun = await gate(dir, 'verify', ['--failed-only']);
   assert.notEqual(rerun.code, 0, rerun.out + rerun.err);
   assert.match(rerun.out, /^FAIL 95-red-overlay/m);
-  assert.doesNotMatch(rerun.out, /01-post-entry|02-balance-sums|03-state-endpoint|04-cli-roundtrip|05-refund-memo/);
+  assert.doesNotMatch(rerun.out, /01-post-entry|02-balance-sums|03-state-endpoint|04-cli-roundtrip|05-refund-memo|06-supplier-balance/);
   assert.doesNotMatch(rerun.out, /# tests|ℹ tests/, 'lint and unit are not rerun');
   assert.deepEqual(records(dir), { e2e: ['95-red-overlay'] });
 

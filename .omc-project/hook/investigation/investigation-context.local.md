@@ -68,6 +68,12 @@ The lines read `KEY=value`. A missing file or key is a `tally-local` failure.
   The schema is one table, `entries (id, account, cents, memo, at)`, amounts in integer cents.
 - Every `mcp__tally-local__http_get` call passes `port` (`TALLY_PORT`) and a `path`: `/state` or
   `/balance/<account>`. The server answers `GET` only; `http_get` never writes.
+- `/state` answers the database's counters (`entries`, `accounts`, `total_cents`) and what the server keeps in memory
+  only, which no database query and no run file shows: `cache` (`hits`, `misses` and `invalidations` of its balance
+  cache; a post to an account invalidates that account's cached balance) and `last_request` (the last request it
+  handled, `GET /state` left out, as the server understood it: `method`, `path` and the `account` it used). Read it
+  for the held scenario: it is the server's own view of the state the failure left. Your own `http_get` calls are
+  requests too: a `/balance/<account>` call replaces `last_request` and counts in `cache`.
 - Never use the `base` port or database printed in another scenario's `output.txt`, a port or database of another
   checkout or run, or a database named by `server_info`.
 

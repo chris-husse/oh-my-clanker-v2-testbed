@@ -7,7 +7,7 @@ HTTP server and a CLI. Amounts are integer cents throughout.
 
 | Path | Holds |
 |---|---|
-| `src/db.js`, `src/ledger.js`, `src/server.js` | the schema (`entries (id, account, cents, memo, at)`), the ledger functions, the HTTP server (`POST /entries`, `GET /balance/<account>`, `GET /state`) |
+| `src/db.js`, `src/ledger.js`, `src/server.js` | the schema (`entries (id, account, cents, memo, at)`), the ledger functions, the HTTP server (`POST /entries`, `GET /balance/<account>`, `GET /state`: the counters, the balance cache, the last request) |
 | `bin/tally` | the CLI: `add <account> <amount> [--memo m]`, `balance <account>`, `report [--json]`; database from `TALLY_DB` |
 | `test/unit/*.test.js` | unit tests (`node:test`) |
 | `e2e/scenarios/NN-name.mjs` | end-to-end scenarios, each on its own server, port and database `data/tally_<slug>.db` |

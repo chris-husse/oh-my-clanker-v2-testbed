@@ -213,6 +213,7 @@ test('fault/blind-db: lint and unit green, only 05-refund-memo red with numbers 
       'PASS 03-state-endpoint',
       'PASS 04-cli-roundtrip',
       'FAIL 05-refund-memo: expected 1050, got 600',
+      'PASS 06-supplier-balance',
     ]);
 
     // the files of the run carry the numbers, never the cause
