@@ -35,6 +35,6 @@ HTTP server and a CLI. Amounts are integer cents throughout.
 - A behaviour change comes with its unit test; a new end-to-end flow with its scenario in `e2e/scenarios/`.
 - `target/`, `data/`, `dist/` and `.cache/` are generated and never committed.
 - `/verify` and `/investigate` read no git history, from their first command on: no `git log`, `git show`,
-  `git diff`, `git blame` or `git reflog`. History is no evidence of a run; the run dir, the held service and its
-  database are (`omc/bin/verify.hold.md`). `git status --porcelain` shows the tree and `git rev-parse --short HEAD`
-  the commit.
+  `git blame`, `git reflog`, no `git diff` against any revision but `HEAD`, and never one through `--git-dir` or
+  `--work-tree`. History is no evidence of a run; the run dir, the held service and its database are
+  (`omc/bin/verify.hold.md`). `git status --porcelain` shows the tree and `git rev-parse --short HEAD` the commit.
