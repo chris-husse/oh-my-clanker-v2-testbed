@@ -142,6 +142,11 @@ Modify nothing: not the database, the server, the run dir or the project's files
 and `http_get` only reads, and no route around that exists. Never run `just release` or `node scripts/release.mjs`,
 never stop the server and never kill a process: the caller owns the release.
 
+The caller is this same session: the `/verify` terminal runs `/investigate local` inline, in its own turn. The
+investigation never releases; once its result is written, the investigation is over and the session goes straight on
+as the caller, with the hold note's next step (its release, then the fix loop), in the same turn. Never end the turn
+on the result: a reply with no tool call ends it with the run still held.
+
 ## Execution model: a focused leaf, unattended
 
 Run as a focused leaf, not a worker pool: no worker dispatch, no subagents. Do the file reads and the `tally-local`

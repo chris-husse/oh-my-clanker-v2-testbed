@@ -64,6 +64,9 @@ The result starts with one label, or is a diagnosis:
   step 4;
 - `BLOCKED: <cause>`: a tooling or access failure, a missing lead or missing input: step 5.
 
+`/investigate local` runs inline, in this turn: its result returns to you. Go on with step 4 or 5 and the release
+(step 6) at once, in the same turn; the result is never the end of the turn.
+
 If `/investigate local` cannot be run (the skill is missing, the Skill tool is unavailable), refuses, prints its usage,
 or returns `BLOCKED:`, that is BLOCKED: step 5. Never investigate in place of `/investigate local` a scenario the note
 told you to investigate, and never fix such a scenario from the logs alone.
