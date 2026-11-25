@@ -15,8 +15,8 @@ Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without
 
     git checkout -b tmp main
     # edit files, including .omc-project/ when the scenario changes the overlay
-    git diff main > scenarios/<id>.patch
-    git checkout -- . && git checkout main && git branch -D tmp
+    git add -A && git diff --cached main > scenarios/<id>.patch
+    git reset -q --hard && git checkout main && git branch -D tmp
     git add scenarios/<id>.patch && git commit -m "feat: scenario <id>"
 
 Check it: `scripts/build-branches.sh <id>`, then `git log --stat <branch>`. Generating twice gives the same

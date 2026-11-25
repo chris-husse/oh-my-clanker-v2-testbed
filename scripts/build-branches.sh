@@ -7,11 +7,13 @@
 # Branch names: fault-<rest> -> fault/<rest>, scenario-<rest> -> scenario/<rest>, vanilla -> vanilla.
 # Each branch is ONE orphan commit (message `scenario <id>`, fixed author and dates), so the same
 # main and patch always give the same commit id. A branch tree never holds scenarios/ or this script,
-# so an agent working on a branch cannot read the other scenarios. Only .omc-project/ is dropped from vanilla.
+# nor the generator's own test, so an agent working on a branch cannot read the other scenarios. Only .omc-project/ is dropped from vanilla.
 # --push force-pushes the generated branches to origin; main is never pushed.
 #
 # Everything is plumbing on a temporary index: the working tree, index and HEAD of the caller are not touched.
 set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
 
 BASE=main
 push=0
@@ -46,7 +48,7 @@ branch_of() {
 }
 
 for id in "${ids[@]}"; do
-  if [ "$id" != vanilla ] && ! printf '%s\n' ${available[@]+"${available[@]}"} | grep -qx -- "$id"; then
+  if [ "$id" != vanilla ] && ! printf '%s\n' ${available[@]+"${available[@]}"} | grep -Fxq -- "$id"; then
     echo "build-branches: unknown scenario id: $id (known: vanilla ${available[*]:-})" >&2
     exit 1
   fi
@@ -69,7 +71,7 @@ for id in "${ids[@]}"; do
     git show "$BASE:scenarios/$id.patch" >"$work/patch"
     git apply --cached --whitespace=nowarn "$work/patch"
   fi
-  git rm -r --cached -q --ignore-unmatch -- scenarios scripts/build-branches.sh
+  git rm -r --cached -q --ignore-unmatch -- scenarios scripts/build-branches.sh test/protocol/branches.test.js
   tree=$(git write-tree)
   commit=$(git commit-tree "$tree" -m "scenario $id")
   git update-ref "refs/heads/$branch" "$commit"

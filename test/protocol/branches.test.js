@@ -133,3 +133,38 @@ test('--push only pushes the generated branches, never main', () => {
   const refs = git(remote, 'for-each-ref', '--format=%(refname)').split('\n').sort();
   assert.deepEqual(refs, ['refs/heads/fault/e2e-red', 'refs/heads/vanilla']);
 });
+
+test('generated trees hold no trace of the generator, its test or any scenario id', () => {
+  const dir = testbed();
+  assert.equal(generate(dir).status, 0);
+  const needles = ['build-branches', 'e2e-red', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+  for (const branch of ['vanilla', 'fault/e2e-red']) {
+    const files = tree(dir, branch);
+    assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
+    for (const file of files) {
+      const text = git(dir, 'show', `${branch}:${file}`);
+      for (const needle of needles) {
+        if (file.startsWith('e2e/scenarios/')) continue;
+        assert.ok(!text.includes(needle), `${branch}:${file} mentions ${needle}`);
+      }
+    }
+  }
+});
+
+test('the generator runs from a subdirectory of the checkout', () => {
+  const dir = testbed();
+  mkdirSync(join(dir, 'src', 'deeper'), { recursive: true });
+  const result = spawnSync('bash', [join(dir, 'scripts/build-branches.sh'), 'fault-e2e-red'], {
+    cwd: join(dir, 'src', 'deeper'),
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(git(dir, 'rev-list', '--count', 'fault/e2e-red'), '1');
+});
+
+test('an id is matched literally, not as a pattern', () => {
+  const dir = testbed();
+  const result = generate(dir, 'fault-e2e-re.');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown scenario id/);
+});
