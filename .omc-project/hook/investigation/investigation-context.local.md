@@ -43,9 +43,10 @@ no `output.txt`.
 - The tools are deferred in a subagent session: load them before the first call with one `ToolSearch` query using
   `select:` and the exact names:
   `select:mcp__tally-local__server_info,mcp__tally-local__db_query,mcp__tally-local__http_get`.
-- Call `server_info` first and quote `database.user` from its answer. It must be `readonly`; any other value is a
-  `tally-local` failure (see "When `tally-local` fails"). `server_info` may list databases: never take a database from
-  that list.
+- Call `server_info` first, on its own (no other tool call sent beside it), and read its answer before any
+  `db_query` or `http_get`: calls sent together have no order. Quote `database.user` from its answer. It must be
+  `readonly`; any other value is a `tally-local` failure (see "When `tally-local` fails"). `server_info` may list
+  databases: never take a database from that list.
 - No other MCP namespace, and no other route to the same data.
 
 ## Parameters: only from the run's files
