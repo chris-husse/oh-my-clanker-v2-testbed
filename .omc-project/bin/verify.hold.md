@@ -6,8 +6,9 @@ at the state the failure left behind. The gate stops at its first failing step, 
 scenario fixed in this attempt lets another failing scenario be held in the next one. A held run keeps one verify slot
 until it is released. Never kill the run. You end the hold with `just release` (step 6), and no turn ends before that.
 `just release` stops only the held e2e runner (it signals only the pid in `<run-dir>/harness.pid`, and only when that is
-`node scripts/e2e.mjs`): it is the intended end of the hold, not a kill of the gate. The gate run then ends red, and
-rerunning the gate is the conductor's job, not a tool call of yours.
+`node scripts/e2e.mjs`): it is the intended end of the hold, not a kill of the gate. The gate run then ends red; after
+the release, continue with your loop (step 5 of the terminal: rerun what the fixes fixed, then a fresh full run from
+its step 1). Never rerun the gate while the run is held.
 
 The investigation is `/investigate local`. Its WHERE (the `tally-local` namespace, the parameters and the files they
 come from, the read-only and no-fallback rules, the `BLOCKED:`, `UNRESOLVED:` and `HOLD_ENDED:` results, the report
@@ -79,7 +80,9 @@ investigation that returned a diagnosis is completed.
 - At least one diagnosis: continue with the normal fix loop from the diagnoses (the released run's server is gone).
   `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are never fixed from the logs. Only a scenario NOT
   investigated (more than 10, or past the 1200-second start limit) may be fixed from its folder's files, and the report
-  says so.
+  says so. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
+  and no reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and
+  the run's database.
 - No diagnosis (none completed, or every investigation `UNRESOLVED:` or interrupted): return `needs_user` listing the
   `UNRESOLVED:` and interrupted scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the
   scenario artifacts are in `<run-dir>`", and do not fix.

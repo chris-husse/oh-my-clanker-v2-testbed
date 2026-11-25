@@ -17,6 +17,10 @@ Frame everything as e2e-run artifacts, not a live remote system. The evidence is
 No Splunk, no Grafana, no metrics source, no docker logs, no other environment. Only the held scenario has a live
 server and database; every other failing scenario of the run is investigated from its folder's files alone.
 
+git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`, and no
+reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and the run's
+database.
+
 ## Required input, or refuse
 
 The required input is the absolute path of the failing scenario folder under investigation:
@@ -80,7 +84,8 @@ The lead's logs are in the scenario folder. Read in this order, only as far as y
 4. Then, for the held scenario only, the live state through `tally-local`: the entries and accounts the scenario
    names, found from the requests in `output.txt`.
 
-Use file reads and read-only `grep` or `tail`. The scenario's code under `e2e/scenarios/` and the code under `src/`
+Use file reads and read-only `grep` or `tail`; never `git log`, `git diff`, `git show`, `git blame`, `git reflog`
+or a session log (`.claude/projects`, `*.jsonl`). The scenario's code under `e2e/scenarios/` and the code under `src/`
 may be read to understand what was expected; they are not evidence of what happened.
 
 tally's server has no background work: nothing advances the held database after the scenario ends, so the held state

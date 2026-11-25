@@ -234,9 +234,14 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
     '1800 seconds',
     'Always release',
     'Never kill the run',
+    'after\nthe release, continue with your loop (step 5 of the terminal',
+    'Never rerun the gate while the run is held.',
+    'git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`',
+    '(`.claude/projects`, `*.jsonl`)',
   ]) {
     assert.ok(hold.includes(text), `verify.hold.md names ${text}`);
   }
+  assert.doesNotMatch(hold, /conductor's job|not a tool call of yours/);
   const notes = read('bin/verify.md');
   for (const text of ['--failed-only', 'args: --failed-only', 'only a fresh full run', '`silence`', 'verify` slot']) {
     assert.ok(notes.includes(text), `verify.md names ${text}`);
@@ -245,6 +250,8 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
   const local = read('hook/investigation/investigation-context.local.md');
   for (const text of [
     'mcp__tally-local__*',
+    'git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`',
+    '(`.claude/projects`, `*.jsonl`)',
     '`readonly`',
     'TALLY_DATABASE',
     'TALLY_DB_PATH',
@@ -273,3 +280,17 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
     assert.ok(statSync(join(root, '.omc-project/bin', gate)).mode & 0o111, `${gate} is executable`);
   }
 });
+
+test('just release passes a run dir with spaces as one argument', { skip: !onPath('just') && 'just is not on PATH' }, () => {
+  mkdirSync(join(root, 'target'), { recursive: true });
+  const base = mkdtempSync(join(root, 'target', 'release-'));
+  dirs.add(base);
+  const dir = join(base, 'e2e runs', 'x');
+  mkdirSync(dir, { recursive: true });
+  const out = execFileSync('just', ['release', '--report-dir', dir], { cwd: root, encoding: 'utf8' });
+  assert.equal(out.trim(), 'RELEASED');
+});
+
+function onPath(command) {
+  return (process.env.PATH ?? '').split(':').some((folder) => folder && existsSync(join(folder, command)));
+}
