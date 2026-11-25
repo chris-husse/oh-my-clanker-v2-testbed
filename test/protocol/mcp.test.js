@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -236,6 +236,36 @@ test('db_query turns a SQL error into an isError result and keeps serving', asyn
   assert.match(textOf(result), /sql/);
   const alive = await child.call('server_info');
   assert.equal(alive.isError, undefined);
+});
+
+test('db_query keeps column positions for duplicate and integer-like names', async () => {
+  const cwd = tempCwd();
+  seed(cwd, 'tally_seeded');
+  const child = await started(cwd);
+  const query = async (sql) => jsonOf(await child.call('db_query', { database: 'tally_seeded', sql }));
+  assert.deepEqual(await query('SELECT 2, 1'), { columns: ['2', '1'], rows: [[2, 1]] });
+  assert.deepEqual(await query('SELECT count(*), 1 FROM entries'), {
+    columns: ['count(*)', '1'],
+    rows: [[3, 1]],
+  });
+  assert.deepEqual(await query('SELECT a.id, b.id FROM entries a JOIN entries b ON a.id < b.id ORDER BY a.id, b.id'), {
+    columns: ['id', 'id'],
+    rows: [[1, 2], [1, 3], [2, 3]],
+  });
+  assert.deepEqual(await query('SELECT id FROM entries WHERE id < 0'), { columns: ['id'], rows: [] });
+});
+
+test('db_query names database when the file cannot be opened as a database', async () => {
+  const cwd = tempCwd();
+  mkdirSync(join(cwd, 'data', 'tally_dir.db'));
+  writeFileSync(join(cwd, 'data', 'tally_junk.db'), 'this is not a sqlite file at all, just text\n'.repeat(50));
+  const child = await started(cwd);
+  for (const database of ['tally_dir', 'tally_junk']) {
+    const result = await child.call('db_query', { database, sql: 'SELECT 1' });
+    assert.equal(result.isError, true, database);
+    assert.match(textOf(result), /^database/, database);
+    assert.doesNotMatch(textOf(result), /internal error/, database);
+  }
 });
 
 test('db_query truncates at 200 rows and flags it', async () => {

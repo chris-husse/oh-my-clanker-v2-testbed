@@ -103,28 +103,36 @@ function checkDatabase(database) {
   return path;
 }
 
+function openReadOnly(database, path) {
+  let db;
+  try {
+    db = new DatabaseSync(path, { readOnly: true });
+    db.prepare('SELECT 1 FROM sqlite_master LIMIT 1').get(); // fails on a non-SQLite or corrupt file
+    return db;
+  } catch (error) {
+    db?.close();
+    throw new ToolError(`database ${database} cannot be opened: ${error.message}`);
+  }
+}
+
 function dbQuery({ database, sql } = {}) {
   const path = checkDatabase(database);
   const statement = checkSql(sql);
-  const db = new DatabaseSync(path, { readOnly: true });
+  const db = openReadOnly(database, path);
   try {
     const prepared = db.prepare(statement);
-    const columns =
-      typeof prepared.columns === 'function' ? prepared.columns().map((column) => column.name) : null;
+    prepared.setReturnArrays(true);
+    const columns = prepared.columns().map((column) => column.name);
     const rows = [];
     let truncated = false;
-    let names = columns;
     for (const row of prepared.iterate()) {
       if (rows.length === MAX_ROWS) {
         truncated = true;
         break;
       }
-      names ??= Object.keys(row);
-      rows.push(Object.values(row));
+      rows.push(row);
     }
-    const result = { columns: names ?? [], rows };
-    if (truncated) result.truncated = true;
-    return result;
+    return truncated ? { columns, rows, truncated } : { columns, rows };
   } catch (error) {
     throw new ToolError(`sql failed: ${error.message}`);
   } finally {
