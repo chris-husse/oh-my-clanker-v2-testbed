@@ -1,0 +1,13 @@
+{
+  "name": "tally",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A tiny dependency-free ledger with a CLI and an HTTP server.",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "test": "node --test --disable-warning=ExperimentalWarning test/unit/*.test.js"
+  }
+}
