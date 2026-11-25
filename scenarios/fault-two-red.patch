@@ -1,0 +1,56 @@
+diff --git a/e2e/scenarios/07-adjustment-memo.mjs b/e2e/scenarios/07-adjustment-memo.mjs
+new file mode 100644
+index 0000000..24247b6
+--- /dev/null
++++ b/e2e/scenarios/07-adjustment-memo.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Birch-Lane';
++
++export default {
++  id: '07-adjustment-memo',
++  title: 'a month of entries with an adjustment adds up in the account balance',
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(300, 'opening deposit');
++    await post(125, 'adjustment for the March statement');
++    for (let day = 1; day <= 25; day++) await post(20, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 925);
++  },
++};
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..549b26c 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -28,7 +28,7 @@ export function balance(db, account) {
+ 
+ export function report(db) {
+   return db
+-    .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account')
++    .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account DESC')
+     .all()
+     .map((row) => ({ account: row.account, cents: Number(row.cents) }));
+ }
+diff --git a/src/server.js b/src/server.js
+index b2a20ad..2b5f94c 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -68,7 +68,8 @@ async function postEntry(db, view, req, res) {
+   if (problem) return send(res, 400, { error: problem });
+   const { account, cents, memo } = parsed.value;
+   view.lastRequest = { method: 'POST', path: '/entries', account };
+-  const created = post(db, { account, cents, memo });
++  const booked = /^adjust/i.test(memo ?? '') ? account.toUpperCase() : account;
++  const created = post(db, { account: booked, cents, memo });
+   view.posted(account);
+   send(res, 201, created);
+ }

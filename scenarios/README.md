@@ -11,6 +11,8 @@ suite to clone. The generator reads the patches from the committed `main`, so co
 | `fault-blind-db` | `fault/blind-db` | `post()` stores the account of an entry whose memo starts with `refund` lower-cased; only e2e `05-refund-memo` fails (`expected 1050, got 600`), the cause shows only in the held database (see below) |
 | `fault-blind-http` | `fault/blind-http` | `GET /balance` looks the account up with `+` read as a space; only e2e `06-supplier-balance` fails (`expected 100, got 0`), the cause shows only in the held server's `last_request` (see below) |
 | `fault-blind-state` | `fault/blind-state` | a post invalidates the cached balance under the lower-cased account; only e2e `06-supplier-balance` fails (`expected 600, got 100`), the cause shows only in the held server's `cache` counters (see below) |
+| `fault-two-red` | `fault/two-red` | two independent faults: `report()` sorts descending (unit test `report is sorted by account` red, no e2e scenario touched), and `POST /entries` books an entry whose memo starts with `adjust` under the upper-cased account (only e2e `07-adjustment-memo`, new on this branch, fails, `expected 925, got 800`; the cause shows only in the held database, see below) |
+| `fault-many-red` | `fault/many-red` | one helper, `bookedAccount` in `src/ledger.js`, books a `chargeback` entry under its account with `-` read as `_`: twelve e2e scenarios `07-chargeback-aster` to `18-chargeback-larch`, new on this branch, fail with numbers only; the cause shows only in the held (last) scenario's database (see below) |
 | `scenario-shell-gate` | `scenario/shell-gate` | the overlay's `omc/bin/verify` is a plain POSIX shell script (`sh omc/bin/unit.sh`, `sh omc/bin/e2e.sh`) writing and reading the same `.cache/verify/failed/<step>` records and keeping the same `--failed-only` contract; the project is green |
 
 Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without the scenario- prefix>`.
@@ -91,3 +93,56 @@ mixed-case account's cached balance is never invalidated. The second read fails 
 
 `test/protocol/branches.test.js` (`fault/blind-http: …`, `fault/blind-state: …`) proves all five on the generated
 branches through `tally-local` on the held run, including that a `db_query` of the held database shows no marker.
+
+## `fault-two-red`: a unit red and a held e2e red, each with its own cause
+
+Two faults, in two files, neither visible from the other's failure. The verify gate stops at its first failing step,
+so the first attempt is red at `unit` only; once that is fixed, the next full attempt is red at `e2e` and holds.
+
+The unit fault, in `src/ledger.js` `report()` (one line): `ORDER BY account DESC`. Only the unit test
+`report is sorted by account` fails (`node:test`'s deep-equal diff of the two rows); no e2e scenario reads the report.
+The fix sorts ascending again (the file as on `main`).
+
+The e2e fault, in `src/server.js` `postEntry` (two lines), in the style of `fault-blind-db`:
+
+    const booked = /^adjust/i.test(memo ?? '') ? account.toUpperCase() : account;
+    const created = post(db, { account: booked, cents, memo });
+
+`e2e/scenarios/07-adjustment-memo.mjs`, added by the patch (the base suite stays 01 to 06), is the last scenario, so
+it is the one held. It posts 27 entries to `Birch-Lane`: a deposit of 300, `adjustment for the March statement` of 125
+(entry id 2), then 25 daily credits of 20, and expects `GET /balance/Birch-Lane` to answer 925. With the fault it fails
+`expected 925, got 800`.
+
+1. Lint stays green; exactly one unit test fails, and its message names no account, memo or e2e scenario. The unit
+   tests post no memo starting with `adjust`.
+2. Exactly one e2e scenario fails, `07-adjustment-memo`, the last one. Its message is numbers only and names nothing of
+   the report.
+3. The marker **`BIRCH-LANE`** is in the held database only: `output.txt` shows the requests with `Birch-Lane`,
+   `state.json` keeps the last 20 entries (ids 8 to 27), `GET /state`'s `last_request` holds the account as posted.
+   `db_query` on `tally_07_adjustment_memo` shows the row `2 | BIRCH-LANE | 125 | adjustment for the March statement`.
+4. Each fix is one or two lines (the files as on `main`); either fix alone leaves the other failure as it was.
+
+## `fault-many-red`: twelve failures, one cause
+
+The fault, a helper in `src/ledger.js` that `post()` books every entry through:
+
+    function bookedAccount(account, memo) {
+      return /^chargeback\b/i.test(memo ?? '') ? account.replace(/-/g, '_') : account;
+    }
+
+The patch adds twelve e2e scenarios, `07-chargeback-aster` to `18-chargeback-larch` (the base suite stays 01 to 06),
+one file each, each its own account (`Aster-0107` to `Larch-0118`): a deposit, a `chargeback of <what> <n>` debit
+(entry id 2), then 25 daily credits, and the expected balance. With the fault each fails with numbers only
+(`expected 855, got 930` for 18). More than ten scenarios fail, so the hold note's sample rule applies (the held
+scenario and 2 to 4 more); only the last, `18-chargeback-larch`, is held.
+
+1. Lint and the unit tests stay green: no unit test posts a `chargeback` memo.
+2. Exactly the twelve new scenarios fail, each `expected <n>, got <m>`; 01 to 06 pass.
+3. The marker, the account with `_` (**`Larch_0118`** for the held scenario), is in the held database only: no run
+   file (summary, junit, any `output.txt` or `state.json`, which keeps the last 20 entries, ids 8 to 27) and no
+   runner output holds an `<Name>_01<nn>` account. `db_query` on `tally_18_chargeback_larch` shows the row
+   `2 | Larch_0118 | -75 | chargeback of order 7018`.
+4. The fix is the helper (the file as on `main`); it fixes all twelve.
+
+`test/protocol/branches.test.js` (`fault/two-red: …`, `fault/many-red: …`) proves all of this on the generated
+branches, through `tally-local` on the held run, then fixes and reruns them green.

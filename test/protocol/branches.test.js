@@ -3,7 +3,9 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -247,7 +249,9 @@ test('fault/blind-db: lint and unit green, only 05-refund-memo red with numbers 
 
 // A generated fault branch held on its failing scenario: the checkout, the runner's stdout up to the hold, the run
 // dir, the held port and a tally-local client on the run; close() ends it.
-async function heldBranch(id, branch) {
+// [failingUnits]: the names of the unit tests the branch fails on purpose (none: the unit tests are green); the
+// unit run's TAP output is `held.unit`.
+async function heldBranch(id, branch, { failingUnits = [] } = {}) {
   const dir = testbed();
   assert.equal(generate(dir, id).status, 0);
   const checkout = join(dir, 'checkout');
@@ -257,15 +261,16 @@ async function heldBranch(id, branch) {
   for (const file of ['src/db.js', 'src/ledger.js', 'src/server.js', 'bin/tally', 'scripts/e2e.mjs', 'mcp/tally-mcp.mjs']) {
     assert.equal(run('--check', file).status, 0, file);
   }
-  const unit = run('--test', '--disable-warning=ExperimentalWarning', 'test/unit/*.test.js');
-  assert.equal(unit.status, 0, unit.stdout + unit.stderr);
+  const unit = run('--test', '--disable-warning=ExperimentalWarning', '--test-reporter=tap', 'test/unit/*.test.js');
+  assert.deepEqual(notOk(unit.stdout), failingUnits, unit.stdout + unit.stderr);
+  assert.equal(unit.status, failingUnits.length ? 1 : 0, unit.stdout + unit.stderr);
   const child = spawn('node', ['--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs', '--keep-alive-on-failure'], {
     cwd: checkout,
     env: { ...env, TALLY_HOLD_TIMEOUT: '30', TALLY_HOLD_BEAT: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const exited = new Promise((done) => child.on('exit', done));
-  const held = { checkout, runDir: join(checkout, 'target/e2e-runs') };
+  const held = { checkout, dir, run, unit: unit.stdout, runDir: join(checkout, 'target/e2e-runs') };
   held.close = async () => {
     held.mcp?.close();
     child.kill('SIGTERM');
@@ -280,6 +285,11 @@ async function heldBranch(id, branch) {
     await held.close();
     throw error;
   }
+}
+
+// The names of the top-level `not ok` results of a TAP run.
+function notOk(tap) {
+  return tap.split('\n').map((line) => /^not ok \d+ - (.*?)(?: # .*)?$/.exec(line)?.[1]).filter(Boolean);
 }
 
 const RESULTS = (failure) => [
@@ -352,6 +362,102 @@ test('fault/blind-state: lint and unit green, only 06 red with numbers only, the
   }
 });
 
+// Every result line (`PASS <id>` / `FAIL <id>: <message>`) of the runner's output.
+const resultLines = (out) => out.split('\n').filter((line) => /^(PASS|FAIL) /.test(line));
+const BASE_PASSES = ['01-post-entry', '02-balance-sums', '03-state-endpoint', '04-cli-roundtrip', '05-refund-memo',
+  '06-supplier-balance'].map((id) => `PASS ${id}`);
+
+// The run's files (summary, junit, each scenario's output.txt and state.json) and the runner's output hold no match of
+// [marker] (a string or a RegExp).
+function assertFilesBlind(held, marker) {
+  const shows = (text) => (marker instanceof RegExp ? marker.test(text) : text.includes(marker));
+  const scenarios = readdirSync(join(held.runDir, 'scenarios'));
+  const files = ['summary.md', 'junit.xml', ...scenarios.flatMap((id) => [`scenarios/${id}/output.txt`,
+    `scenarios/${id}/state.json`])];
+  for (const file of files) assert.ok(!shows(readFileSync(join(held.runDir, file), 'utf8')), `${file} shows the cause`);
+  assert.ok(!shows(held.out), 'the runner output shows the cause');
+}
+
+// [files] of the checkout set back to main's (the fix), then the unit tests and a full e2e run: their statuses and
+// the e2e run's output.
+function afterFix(held, files) {
+  for (const file of files) writeFileSync(join(held.checkout, file), git(held.dir, 'show', `main:${file}`) + '\n');
+  const unit = held.run('--test', '--disable-warning=ExperimentalWarning', 'test/unit/*.test.js');
+  const e2e = held.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs', '--report-dir', 'target/after-fix');
+  return { unit: unit.status, e2e: e2e.status, out: e2e.stdout };
+}
+
+// Two independent faults (scenarios/README.md): report() sorts descending (one unit test red, nothing of e2e), and
+// POST /entries books an `adjustment` entry under the upper-cased account (only e2e 07, the cause only in its DB).
+const TWO_RED_MARKER = 'BIRCH-LANE';
+
+test('fault/two-red: one unit test red, only 07-adjustment-memo red in e2e, each cause apart, red then green', async () => {
+  const held = await heldBranch('fault-two-red', 'fault/two-red', { failingUnits: ['report is sorted by account'] });
+  try {
+    for (const hint of [TWO_RED_MARKER, 'Birch', 'adjust', 'toUpperCase']) {
+      assert.ok(!held.unit.includes(hint), `the unit failure shows ${hint}`);
+    }
+    assert.deepEqual(resultLines(held.out), [...BASE_PASSES, 'FAIL 07-adjustment-memo: expected 925, got 800']);
+    assertFilesBlind(held, TWO_RED_MARKER);
+    for (const hint of ['report', 'DESC']) {
+      const text = readFileSync(join(held.runDir, 'scenarios/07-adjustment-memo/output.txt'), 'utf8');
+      assert.ok(!text.includes(hint), `the e2e failure shows ${hint}`);
+    }
+    assert.equal(readFileSync(join(held.runDir, 'stack.env'), 'utf8'),
+      'TALLY_DATABASE=tally_07_adjustment_memo\nTALLY_DB_PATH=data/tally_07_adjustment_memo.db\n');
+    const rows = await held.mcp.call('db_query', {
+      database: 'tally_07_adjustment_memo',
+      sql: 'SELECT id, account, cents, memo FROM entries WHERE account <> \'Birch-Lane\'',
+    });
+    assert.equal(rows.isError, false, rows.text);
+    assert.deepEqual(JSON.parse(rows.text).rows, [[2, TWO_RED_MARKER, 125, 'adjustment for the March statement']]);
+    const state = await held.mcp.call('http_get', { port: held.port, path: '/state' });
+    assert.equal(state.isError, false, state.text);
+    assert.ok(!state.text.includes(TWO_RED_MARKER), 'the server\'s /state shows the cause');
+  } finally {
+    await held.close();
+  }
+  const fixedUnit = afterFix(held, ['src/ledger.js']);
+  assert.equal(fixedUnit.unit, 0, 'the report fix alone greens the unit tests');
+  assert.deepEqual(resultLines(fixedUnit.out).filter((line) => line.startsWith('FAIL')),
+    ['FAIL 07-adjustment-memo: expected 925, got 800'], 'and leaves the e2e fault');
+  const fixed = afterFix(held, ['src/server.js']);
+  assert.deepEqual([fixed.unit, fixed.e2e], [0, 0], fixed.out);
+  assert.match(fixed.out, /^7 passed, 0 failed/m);
+});
+
+// Twelve e2e scenarios (07 to 18, on the branch only) red through one helper (scenarios/README.md): a `chargeback`
+// entry is booked under its account with `-` read as `_`; the cause only in the held (last) scenario's DB.
+const MANY_RED_MARKER = /[A-Z][a-z]+_01[0-9]{2}/;
+const CHARGEBACKS = ['aster', 'bramble', 'cedar', 'dune', 'elm', 'fern', 'gorse', 'heath', 'iris', 'juniper', 'kelp',
+  'larch'].map((name, i) => `${String(7 + i).padStart(2, '0')}-chargeback-${name}`);
+
+test('fault/many-red: lint and unit green, twelve e2e scenarios red with numbers only, one cause, red then green', async () => {
+  const held = await heldBranch('fault-many-red', 'fault/many-red');
+  try {
+    const results = resultLines(held.out);
+    assert.deepEqual(results.slice(0, 6), BASE_PASSES);
+    assert.deepEqual(results.slice(6).map((line) => /^FAIL ([^:]+): expected \d+, got \d+$/.exec(line)?.[1]),
+      CHARGEBACKS, results.join('\n'));
+    assertFilesBlind(held, MANY_RED_MARKER);
+    assert.equal(readFileSync(join(held.runDir, 'stack.env'), 'utf8'),
+      'TALLY_DATABASE=tally_18_chargeback_larch\nTALLY_DB_PATH=data/tally_18_chargeback_larch.db\n');
+    const rows = await held.mcp.call('db_query', {
+      database: 'tally_18_chargeback_larch',
+      sql: 'SELECT id, account, cents, memo FROM entries WHERE memo LIKE \'chargeback%\'',
+    });
+    assert.equal(rows.isError, false, rows.text);
+    assert.deepEqual(JSON.parse(rows.text).rows, [[2, 'Larch_0118', -75, 'chargeback of order 7018']]);
+    const state = await held.mcp.call('http_get', { port: held.port, path: '/state' });
+    assert.ok(!MANY_RED_MARKER.test(state.text), 'the server\'s /state shows the cause');
+  } finally {
+    await held.close();
+  }
+  const fixed = afterFix(held, ['src/ledger.js']);
+  assert.deepEqual([fixed.unit, fixed.e2e], [0, 0], fixed.out);
+  assert.match(fixed.out, /^18 passed, 0 failed/m);
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -375,10 +481,10 @@ test('--push only pushes the generated branches, never main', () => {
 test('generated trees hold no trace of the generator, its test or any scenario id', () => {
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
-  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state',
+  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
     'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
-    'fault/blind-state']) {
+    'fault/blind-state', 'fault/two-red', 'fault/many-red']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {

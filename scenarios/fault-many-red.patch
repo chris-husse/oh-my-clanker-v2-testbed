@@ -1,0 +1,371 @@
+diff --git a/e2e/scenarios/07-chargeback-aster.mjs b/e2e/scenarios/07-chargeback-aster.mjs
+new file mode 100644
+index 0000000..34d4d88
+--- /dev/null
++++ b/e2e/scenarios/07-chargeback-aster.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Aster-0107';
++
++export default {
++  id: '07-chargeback-aster',
++  title: "an order chargeback on Aster's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(240, 'opening deposit');
++    await post(-20, 'chargeback of order 7007');
++    for (let day = 1; day <= 25; day++) await post(15, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 595);
++  },
++};
+diff --git a/e2e/scenarios/08-chargeback-bramble.mjs b/e2e/scenarios/08-chargeback-bramble.mjs
+new file mode 100644
+index 0000000..98984b3
+--- /dev/null
++++ b/e2e/scenarios/08-chargeback-bramble.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Bramble-0108';
++
++export default {
++  id: '08-chargeback-bramble',
++  title: "a subscription chargeback on Bramble's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(280, 'opening deposit');
++    await post(-25, 'chargeback of subscription 7008');
++    for (let day = 1; day <= 25; day++) await post(20, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 755);
++  },
++};
+diff --git a/e2e/scenarios/09-chargeback-cedar.mjs b/e2e/scenarios/09-chargeback-cedar.mjs
+new file mode 100644
+index 0000000..8b9db4f
+--- /dev/null
++++ b/e2e/scenarios/09-chargeback-cedar.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Cedar-0109';
++
++export default {
++  id: '09-chargeback-cedar',
++  title: "an invoice chargeback on Cedar's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(320, 'opening deposit');
++    await post(-30, 'chargeback of invoice 7009');
++    for (let day = 1; day <= 25; day++) await post(25, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 915);
++  },
++};
+diff --git a/e2e/scenarios/10-chargeback-dune.mjs b/e2e/scenarios/10-chargeback-dune.mjs
+new file mode 100644
+index 0000000..f96bf57
+--- /dev/null
++++ b/e2e/scenarios/10-chargeback-dune.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Dune-0110';
++
++export default {
++  id: '10-chargeback-dune',
++  title: "a booking chargeback on Dune's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(360, 'opening deposit');
++    await post(-35, 'chargeback of booking 7010');
++    for (let day = 1; day <= 25; day++) await post(10, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 575);
++  },
++};
+diff --git a/e2e/scenarios/11-chargeback-elm.mjs b/e2e/scenarios/11-chargeback-elm.mjs
+new file mode 100644
+index 0000000..66cbedf
+--- /dev/null
++++ b/e2e/scenarios/11-chargeback-elm.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Elm-0111';
++
++export default {
++  id: '11-chargeback-elm',
++  title: "an order chargeback on Elm's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(400, 'opening deposit');
++    await post(-40, 'chargeback of order 7011');
++    for (let day = 1; day <= 25; day++) await post(15, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 735);
++  },
++};
+diff --git a/e2e/scenarios/12-chargeback-fern.mjs b/e2e/scenarios/12-chargeback-fern.mjs
+new file mode 100644
+index 0000000..413f172
+--- /dev/null
++++ b/e2e/scenarios/12-chargeback-fern.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Fern-0112';
++
++export default {
++  id: '12-chargeback-fern',
++  title: "a renewal chargeback on Fern's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(440, 'opening deposit');
++    await post(-45, 'chargeback of renewal 7012');
++    for (let day = 1; day <= 25; day++) await post(20, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 895);
++  },
++};
+diff --git a/e2e/scenarios/13-chargeback-gorse.mjs b/e2e/scenarios/13-chargeback-gorse.mjs
+new file mode 100644
+index 0000000..66990a1
+--- /dev/null
++++ b/e2e/scenarios/13-chargeback-gorse.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Gorse-0113';
++
++export default {
++  id: '13-chargeback-gorse',
++  title: "an invoice chargeback on Gorse's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(480, 'opening deposit');
++    await post(-50, 'chargeback of invoice 7013');
++    for (let day = 1; day <= 25; day++) await post(25, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 1055);
++  },
++};
+diff --git a/e2e/scenarios/14-chargeback-heath.mjs b/e2e/scenarios/14-chargeback-heath.mjs
+new file mode 100644
+index 0000000..b693a42
+--- /dev/null
++++ b/e2e/scenarios/14-chargeback-heath.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Heath-0114';
++
++export default {
++  id: '14-chargeback-heath',
++  title: "an order chargeback on Heath's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(520, 'opening deposit');
++    await post(-55, 'chargeback of order 7014');
++    for (let day = 1; day <= 25; day++) await post(10, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 715);
++  },
++};
+diff --git a/e2e/scenarios/15-chargeback-iris.mjs b/e2e/scenarios/15-chargeback-iris.mjs
+new file mode 100644
+index 0000000..85bf95b
+--- /dev/null
++++ b/e2e/scenarios/15-chargeback-iris.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Iris-0115';
++
++export default {
++  id: '15-chargeback-iris',
++  title: "a booking chargeback on Iris's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(560, 'opening deposit');
++    await post(-60, 'chargeback of booking 7015');
++    for (let day = 1; day <= 25; day++) await post(15, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 875);
++  },
++};
+diff --git a/e2e/scenarios/16-chargeback-juniper.mjs b/e2e/scenarios/16-chargeback-juniper.mjs
+new file mode 100644
+index 0000000..5231e52
+--- /dev/null
++++ b/e2e/scenarios/16-chargeback-juniper.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Juniper-0116';
++
++export default {
++  id: '16-chargeback-juniper',
++  title: "a subscription chargeback on Juniper's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(600, 'opening deposit');
++    await post(-65, 'chargeback of subscription 7016');
++    for (let day = 1; day <= 25; day++) await post(20, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 1035);
++  },
++};
+diff --git a/e2e/scenarios/17-chargeback-kelp.mjs b/e2e/scenarios/17-chargeback-kelp.mjs
+new file mode 100644
+index 0000000..6c820c6
+--- /dev/null
++++ b/e2e/scenarios/17-chargeback-kelp.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Kelp-0117';
++
++export default {
++  id: '17-chargeback-kelp',
++  title: "an invoice chargeback on Kelp's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(640, 'opening deposit');
++    await post(-70, 'chargeback of invoice 7017');
++    for (let day = 1; day <= 25; day++) await post(25, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 1195);
++  },
++};
+diff --git a/e2e/scenarios/18-chargeback-larch.mjs b/e2e/scenarios/18-chargeback-larch.mjs
+new file mode 100644
+index 0000000..8b1aa90
+--- /dev/null
++++ b/e2e/scenarios/18-chargeback-larch.mjs
+@@ -0,0 +1,23 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Larch-0118';
++
++export default {
++  id: '18-chargeback-larch',
++  title: "an order chargeback on Larch's account is netted in its balance",
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(680, 'opening deposit');
++    await post(-75, 'chargeback of order 7018');
++    for (let day = 1; day <= 25; day++) await post(10, `daily credit ${day}`);
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 855);
++  },
++};
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..32343a6 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -10,12 +10,17 @@ function checkCents(cents) {
+   }
+ }
+ 
++// The account an entry is booked under.
++function bookedAccount(account, memo) {
++  return /^chargeback\b/i.test(memo ?? '') ? account.replace(/-/g, '_') : account;
++}
++
+ export function post(db, { account, cents, memo }) {
+   checkAccount(account);
+   checkCents(cents);
+   const result = db
+     .prepare('INSERT INTO entries (account, cents, memo, at) VALUES (?, ?, ?, ?)')
+-    .run(account, cents, memo ?? null, new Date().toISOString());
++    .run(bookedAccount(account, memo), cents, memo ?? null, new Date().toISOString());
+   return { id: Number(result.lastInsertRowid) };
+ }
+ 
