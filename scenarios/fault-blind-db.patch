@@ -1,0 +1,16 @@
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..ce5f314 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -13,9 +13,10 @@ function checkCents(cents) {
+ export function post(db, { account, cents, memo }) {
+   checkAccount(account);
+   checkCents(cents);
++  const key = /^refund\b/i.test(memo ?? '') ? account.toLowerCase() : account;
+   const result = db
+     .prepare('INSERT INTO entries (account, cents, memo, at) VALUES (?, ?, ?, ?)')
+-    .run(account, cents, memo ?? null, new Date().toISOString());
++    .run(key, cents, memo ?? null, new Date().toISOString());
+   return { id: Number(result.lastInsertRowid) };
+ }
+ 

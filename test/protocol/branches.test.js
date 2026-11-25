@@ -2,8 +2,8 @@
 // Every test works in a throwaway repository (a copy of the working tree committed as `main`), so the real refs are never touched.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -135,6 +135,115 @@ test('scenario/shell-gate: verify is a POSIX shell script with no node helper an
   assert.equal(run.status, 0, run.stdout + run.stderr);
 });
 
+// The blind DB fault (scenarios/README.md): a refund's account is stored lower-cased. Only the held database shows it.
+const BLIND_MARKER = 'acme-7731';
+
+// A JSON-RPC client of mcp/tally-mcp.mjs started in `cwd`: call(name, args) -> the tool's text, isError.
+async function mcpClient(cwd) {
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(cwd, 'mcp/tally-mcp.mjs')], {
+    cwd,
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  const pending = new Map();
+  let buffer = '';
+  let next = 1;
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) if (line) pending.get(JSON.parse(line).id)?.(JSON.parse(line));
+  });
+  const rpc = (method, params) => new Promise((done) => {
+    const id = next++;
+    pending.set(id, done);
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+  });
+  await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {} });
+  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+  return {
+    call: async (name, args) => {
+      const { result } = await rpc('tools/call', { name, arguments: args });
+      return { text: result.content[0].text, isError: Boolean(result.isError) };
+    },
+    close: () => child.kill('SIGKILL'),
+  };
+}
+
+// Resolves with the runner's stdout once it printed `OMC_HOLD <dir>`.
+function untilHold(child) {
+  return new Promise((done, fail) => {
+    let out = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      out += chunk;
+      if (/^OMC_HOLD /m.test(out)) done(out);
+    });
+    child.on('exit', (code) => fail(new Error(`the runner exited ${code} without holding:\n${out}`)));
+  });
+}
+
+test('fault/blind-db: lint and unit green, only 05-refund-memo red with numbers only, the cause only in the held DB', async () => {
+  const dir = testbed();
+  assert.equal(generate(dir, 'fault-blind-db').status, 0);
+  const checkout = join(dir, 'checkout');
+  git(dir, 'clone', '--quiet', '--branch', 'fault/blind-db', dir, checkout);
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const run = (...args) => spawnSync('node', args, { cwd: checkout, encoding: 'utf8', env });
+
+  for (const file of ['src/db.js', 'src/ledger.js', 'src/server.js', 'bin/tally', 'scripts/e2e.mjs', 'mcp/tally-mcp.mjs']) {
+    assert.equal(run('--check', file).status, 0, file);
+  }
+  const unit = run('--test', '--disable-warning=ExperimentalWarning', 'test/unit/*.test.js');
+  assert.equal(unit.status, 0, unit.stdout + unit.stderr);
+
+  const child = spawn('node', ['--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs', '--keep-alive-on-failure'], {
+    cwd: checkout,
+    env: { ...env, TALLY_HOLD_TIMEOUT: '30', TALLY_HOLD_BEAT: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const exited = new Promise((done) => child.on('exit', done));
+  let mcp;
+  try {
+    const out = await untilHold(child);
+    const results = out.split('\n').filter((line) => /^(PASS|FAIL) /.test(line));
+    assert.deepEqual(results, [
+      'PASS 01-post-entry',
+      'PASS 02-balance-sums',
+      'PASS 03-state-endpoint',
+      'PASS 04-cli-roundtrip',
+      'FAIL 05-refund-memo: expected 1050, got 600',
+    ]);
+
+    // the files of the run carry the numbers, never the cause
+    const runDir = join(checkout, 'target/e2e-runs');
+    const files = ['summary.md', 'junit.xml', 'scenarios/05-refund-memo/output.txt', 'scenarios/05-refund-memo/state.json'];
+    for (const file of files) {
+      assert.ok(!readFileSync(join(runDir, file), 'utf8').includes(BLIND_MARKER), `${file} shows the cause`);
+    }
+    assert.ok(!out.includes(BLIND_MARKER), 'the runner output shows the cause');
+    assert.equal(readFileSync(join(runDir, 'stack.env'), 'utf8'),
+      'TALLY_DATABASE=tally_05_refund_memo\nTALLY_DB_PATH=data/tally_05_refund_memo.db\n');
+    const port = Number(/^TALLY_PORT=(\d+)$/m.exec(readFileSync(join(runDir, 'ports.env'), 'utf8'))[1]);
+
+    // the held database and server, through tally-local, show it
+    mcp = await mcpClient(checkout);
+    const rows = await mcp.call('db_query', {
+      database: 'tally_05_refund_memo',
+      sql: "SELECT id, account, cents, memo FROM entries WHERE memo LIKE 'refund%'",
+    });
+    assert.equal(rows.isError, false, rows.text);
+    assert.deepEqual(JSON.parse(rows.text).rows, [[2, BLIND_MARKER, 450, 'refund of invoice 7731']]);
+    const balance = await mcp.call('http_get', { port, path: `/balance/${BLIND_MARKER}` });
+    assert.equal(balance.isError, false, balance.text);
+    assert.deepEqual(JSON.parse(balance.text), { status: 200, body: { account: BLIND_MARKER, cents: 450 } });
+  } finally {
+    mcp?.close();
+    child.kill('SIGTERM');
+    await exited;
+  }
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -158,8 +267,9 @@ test('--push only pushes the generated branches, never main', () => {
 test('generated trees hold no trace of the generator, its test or any scenario id', () => {
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
-  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
-  for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate']) {
+  const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'branches.test.js', 'scenarios/fault',
+    'scenarios/scenario'];
+  for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
