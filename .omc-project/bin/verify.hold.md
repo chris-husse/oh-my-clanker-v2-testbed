@@ -121,7 +121,8 @@ it fails closed by intent.
 ## 6. Always release, even when the investigation errors
 
 Do this on every path out of the investigation: done, time limit, `HOLD_ENDED:`, BLOCKED or error. Release as soon as
-you have the evidence; do not wait for more.
+every investigation step 2 chose has returned (or step 4 or 5 stopped them), even when the first result already
+explains the others; do not wait for more. No investigation starts after the release (step 3 needs the hold).
 
 1. Run `just release --report-dir "<run-dir>"` (it runs `node scripts/release.mjs --report-dir "<run-dir>"`). It
    signals the held runner, waits up to 120 seconds for it to exit, and prints `RELEASED` only when it is gone and the
