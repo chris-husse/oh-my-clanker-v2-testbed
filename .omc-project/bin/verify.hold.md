@@ -40,7 +40,7 @@ The held scenario is the one whose `output.txt` has the line `database <TALLY_DB
 Up to 10 failing scenarios: investigate each in turn. More than 10: investigate the held scenario and a sample of 2 to 4
 more, taken from different scenario files: 3 to 5 `/investigate local` calls in all, one per scenario (a scenario only
 read from its files, without a call of its own, is not investigated). The rest are not investigated: the report lists
-each of them on its own line, `<NN-name>: <title>` (from `summary.md`); a range (`08–11`) or a count lists none.
+each of them on its own line, by its full scenario id and title (the Report section below shows the form).
 
 ## 3. Investigate, one scenario per call
 
@@ -147,6 +147,10 @@ State, in this order:
 1. Each `/investigate local` call: the scenario folder and its result, quoted: the values used, the `tally-local` calls
    (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and the cause.
 2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
-   (more than 10, or the time limit), each on its own line by scenario id and title, never as a range or a count; and
-   which of those you fixed from the files.
+   (more than 10, or the time limit), and which of those you fixed from the files. Every one of them on its own line,
+   its full scenario id first, then its title from `summary.md`, never shortened to a number or a span of numbers:
+
+       Not investigated (more than 10 failures):
+       - `<NN-name>`: <title>
+       - `<NN-name>`: <title>
 3. The `just release` output (`RELEASED`) and the port check result.
