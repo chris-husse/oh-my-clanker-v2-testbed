@@ -1,0 +1,13 @@
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..8127285 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -21,7 +21,7 @@ export function post(db, { account, cents, memo }) {
+ 
+ export function balance(db, account) {
+   const row = db
+-    .prepare('SELECT COALESCE(SUM(cents), 0) AS cents FROM entries WHERE account = ?')
++    .prepare('SELECT COALESCE(SUM(MAX(cents, 0)), 0) AS cents FROM entries WHERE account = ?')
+     .get(account);
+   return Number(row.cents);
+ }
