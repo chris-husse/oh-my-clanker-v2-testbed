@@ -685,40 +685,6 @@ test('scenario/unfixable: two unit tests ask balance() of the same state for 0 a
   assert.equal(b.gate('check').status, 1, 'the fix leaves the gate red');
 });
 
-const FEES_TEST = 'fees match the ones the pricing service recorded';
-// scenario/attempts' six wrong rates of src/fees.js, in the order the recorded fees reveal them
-const FEE_FIXES = [
-  ['[25_000, 270,', '[25_000, 275,'], ['[100_000, 245,', '[100_000, 249,'], ['[500_000, 230,', '[500_000, 225,'],
-  ['[2_500_000, 195,', '[2_500_000, 199,'], ['[10_000_000, 160,', '[10_000_000, 165,'],
-  ['[50_000_000, 145,', '[50_000_000, 140,'],
-];
-
-test('scenario/attempts: six wrong rates in src/fees.js, each repair revealing the next; all six green the test', () => {
-  const b = gateBranch('scenario-attempts', 'scenario/attempts');
-  assert.deepEqual(changed(b.dir, 'scenario/attempts').sort(),
-    ['src/fees.js', 'test/unit/fees.test.js', 'test/unit/fixtures/recorded-fees.json']);
-  const check = b.gate('check');
-  assert.equal(check.status, 1, 'the check gate is red');
-  assert.doesNotMatch(check.stderr, /SyntaxError/, 'lint is green');
-  const e2e = b.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs');
-  assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
-  assert.equal(b.gate('build').status, 0, 'the build is green');
-  const file = join(b.checkout, 'src/fees.js');
-  const failure = (out) => /^ {4}(fee\(\d+\))$/m.exec(out)?.[1];
-  const seen = [];
-  for (const [i, [from, to]] of FEE_FIXES.entries()) {
-    const unit = b.run(...TAP_UNITS);
-    assert.deepEqual(notOk(unit.stdout), [FEES_TEST], `before repair ${i + 1}: one failing test`);
-    seen.push(failure(unit.stdout));
-    const source = readFileSync(file, 'utf8');
-    assert.ok(source.includes(from), `repair ${i + 1} applies`);
-    writeFileSync(file, source.replace(from, to));
-  }
-  assert.equal(new Set(seen).size, FEE_FIXES.length, `each repair reveals a new failing case: ${seen.join(' | ')}`);
-  const fixed = b.gate('check');
-  assert.equal(fixed.status, 0, fixed.stdout + fixed.stderr);
-});
-
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -743,11 +709,11 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
-    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'gate-cheat', 'unfixable', 'attempts', 'branches.test.js',
-    'scenarios/fault', 'scenarios/scenario', 'testbed'];
+    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'gate-cheat', 'unfixable', 'branches.test.js', 'scenarios/fault',
+    'scenarios/scenario', 'testbed'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
     'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence', 'fault/unit-red', 'scenario/gate-flake',
-    'scenario/slow-gate', 'scenario/gate-cheat', 'scenario/unfixable', 'scenario/attempts']) {
+    'scenario/slow-gate', 'scenario/gate-cheat', 'scenario/unfixable']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
