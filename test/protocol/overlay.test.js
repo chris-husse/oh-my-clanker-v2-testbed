@@ -255,6 +255,8 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
   assert.doesNotMatch(flat, /Go on with step 4 or 5 and the release \(step 6\) at once/);
   assert.ok(flat.includes('Your final report (the verify turn\'s own, above its `OUTCOME` line; not an investigation\'s result) states, in this order:'),
     'the report section names whose report it is');
+  assert.ok(flat.includes('copy each one\'s `FAIL` row of `summary.md` into the report as it stands'),
+    'the not-investigated list is copied from summary.md');
   assert.ok(flat.includes('- `<NN-name>`: <title>: UNRESOLVED: <what is unknown>'), 'the report form covers UNRESOLVED');
   assert.ok(flat.includes('- `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>'), 'and the interrupted ones');
   const notes = read('bin/verify.md');

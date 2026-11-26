@@ -155,16 +155,18 @@ order:
    the cause.
 2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
    (more than 10, or the time limit), and which of those you fixed from the files. Every one of them on its own line,
-   its full scenario id first, then its title from `summary.md`, never shortened to a number or a span of numbers:
+   with its full scenario id and its title from `summary.md`, never shortened to a number or a span of numbers:
 
        Unresolved:
        - `<NN-name>`: <title>: UNRESOLVED: <what is unknown>
        Interrupted:
        - `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>
        Not investigated (more than 10 failures, or the time limit):
-       - `<NN-name>`: <title>
-       - `<NN-name>`: <title>
+       | FAIL | <NN-name> | <title> | [folder](scenarios/<NN-name>/) |
+       | FAIL | <NN-name> | <title> | [folder](scenarios/<NN-name>/) |
        Fixed from the files: `<NN-name>`, … (or none)
 
-   A heading with nothing under it is left out.
+   For the scenarios not investigated, copy each one's `FAIL` row of `summary.md` into the report as it stands, every
+   row, however many: a summary of them in words or numbers does not list them. A heading with nothing under it is
+   left out.
 3. The `just release` output (`RELEASED`) and the port check result.
