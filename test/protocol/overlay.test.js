@@ -322,6 +322,7 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
     'Only with a diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder\'s files',
     'No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation `UNRESOLVED:` or interrupted)',
     'and do not fix, not even a scenario not investigated',
+    'a result whose cause, by its own account, is read from the code and not shown by the run\'s data (no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the label: never fixed',
   ]) {
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
   }

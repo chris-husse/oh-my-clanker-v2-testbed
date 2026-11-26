@@ -67,6 +67,9 @@ The result starts with one label, or is a diagnosis:
 - a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation (the briefing says what
   makes one: a cause the run's evidence shows, never one read from the code alone);
 - `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, never fixed;
+- a result whose cause, by its own account, is read from the code and not shown by the run's data (no row, response,
+  `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the label: never
+  fixed, listed as unresolved with that cause as its hypothesis;
 - `HOLD_ENDED: <what was gathered>`: the hold ended during the investigation; interrupted, not completed, never fixed:
   step 4;
 - `BLOCKED: <cause>`: a tooling or access failure, a missing lead or missing input: step 5.
