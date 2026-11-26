@@ -175,7 +175,7 @@ index 0000000..67ab0fe
 ++Unit tests only: `test/unit/ledger.test.js` for `report`, `test/unit/cli.test.js` for the CLI. No end-to-end scenario.
 diff --git a/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch b/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch
 new file mode 100644
-index 0000000..d4602a3
+index 0000000..eaef522
 --- /dev/null
 +++ b/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch
 @@ -0,0 +1,77 @@
@@ -192,7 +192,7 @@ index 0000000..d4602a3
 +
 +diff --git a/docs/superpowers/plans/2026-11-20-report-sort-plan.md b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
 +new file mode 100644
-+index 0000000..f4b8b4a
++index 0000000..fb35acf
 +--- /dev/null
 ++++ b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
 +@@ -0,0 +1,60 @@
@@ -215,7 +215,7 @@ index 0000000..d4602a3
 ++- Node's standard library only; no dependency.
 ++- A behaviour change comes with its unit test, written first and seen red.
 ++- The SQL text of `report` stays as it is: the `cents` order is a stable sort over the rows the query returns.
-++- A commit stages its files by name and ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+++- A commit stages its files by name, never with `git add -A`.
 ++
 ++## Review Focus
 ++
@@ -409,7 +409,7 @@ index 0000000..13645f6
 ++});
 diff --git a/fixture/branch/0005-Plan-tasks-1-and-2-done.patch b/fixture/branch/0005-Plan-tasks-1-and-2-done.patch
 new file mode 100644
-index 0000000..3b382d6
+index 0000000..3654cc2
 --- /dev/null
 +++ b/fixture/branch/0005-Plan-tasks-1-and-2-done.patch
 @@ -0,0 +1,55 @@
@@ -424,7 +424,7 @@ index 0000000..3b382d6
 + 1 file changed, 10 insertions(+), 10 deletions(-)
 +
 +diff --git a/docs/superpowers/plans/2026-11-20-report-sort-plan.md b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
-+index f4b8b4a..d48fe2a 100644
++index fb35acf..68e7722 100644
 +--- a/docs/superpowers/plans/2026-11-20-report-sort-plan.md
 ++++ b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
 +@@ -31,15 +31,15 @@ Complexity: simple
