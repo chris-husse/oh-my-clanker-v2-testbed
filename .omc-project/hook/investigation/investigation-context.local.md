@@ -106,6 +106,13 @@ named in its requests and responses. Every claim quotes its source: the file and
 call (tool, `database` or `port`, `sql` or `path`) that returned the rows or response. A claim with no quote is a
 guess; leave it out or say it is unknown.
 
+A diagnosis is a cause the run's evidence shows: a row, a response, a `/state` field or a line of the run's files that
+is itself wrong, not only the failing value restated, quoted together with the code under `src/` that explains it.
+When the rows, `/state`, the files and every response are what a correct run would leave, apart from the failing value
+itself, the evidence does not show where the run went wrong: a cause read from the code alone, however likely, is a
+hypothesis (a run of that code reproducing the failing value is no evidence of what happened either). Then the result
+is `UNRESOLVED: <what is unknown>`, with the hypothesis and its file and line; never a diagnosis.
+
 ## When `tally-local` fails, stop
 
 `BLOCKED` is for tooling and access failures only, and there is no files-only fallback for the held scenario. These are
@@ -119,6 +126,10 @@ On any of them: stop at once and end with a result whose first line is `BLOCKED:
 text. The caller decides what happens next. Never substitute another route: no other port, no other database, no
 `sqlite3` or `node` against `data/`, no `curl` to the port, no other environment's MCP namespace. Every tooling or
 access failure is `BLOCKED:`, never `UNRESOLVED:`: a failed `tally-local` call is not a dead end.
+
+One exception, the end of the hold: a `tally-local` call that fails once the investigation has started, with
+`<run-dir>/harness.pid` gone, failed because the hold ended (the server ends with it). After a failed call, check the
+file (the hold guard below); when it is gone, the result is `HOLD_ENDED: <what was gathered so far>`, not `BLOCKED:`.
 
 The two non-blocked results, each starting the result with its label:
 
@@ -140,8 +151,8 @@ time is `date +%s` minus it. Before each batch of `tally-local` calls, and at le
 - the elapsed time is under 1500 seconds (25 minutes), which keeps a margin before the runner's own 1800.
 
 If either check fails once the investigation has started, end with `HOLD_ENDED: <what was gathered so far>`, with the
-quotes. (A file already gone at the start is `BLOCKED:`, above.) Otherwise stop querying as soon as the evidence for
-the failure under investigation is in hand.
+quotes; so does a failed `tally-local` call with the file gone (above). (A file already gone at the start is
+`BLOCKED:`, above.) Otherwise stop querying as soon as the evidence for the failure under investigation is in hand.
 
 ## Read-only; the caller releases the run
 

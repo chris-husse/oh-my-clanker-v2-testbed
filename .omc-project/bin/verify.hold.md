@@ -64,7 +64,8 @@ Run `/investigate local <prompt>`, one scenario per call. The prompt names:
 
 The result starts with one label, or is a diagnosis:
 
-- a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation;
+- a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation (the briefing says what
+  makes one: a cause the run's evidence shows, never one read from the code alone);
 - `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, never fixed;
 - `HOLD_ENDED: <what was gathered>`: the hold ended during the investigation; interrupted, not completed, never fixed:
   step 4;
@@ -103,7 +104,8 @@ code while the run is held.
 ## 5. BLOCKED
 
 BLOCKED means a tooling or access failure, and it always ends without a fix: an `/investigate local` that cannot be run
-or returns `BLOCKED:`, an error from any `tally-local` call, a missing run file or key, or `<run-dir>/harness.pid` gone
+or returns `BLOCKED:`, an error from any `tally-local` call (one made once the investigation started, with
+`<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4), a missing run file or key, or `<run-dir>/harness.pid` gone
 before any investigation started.
 
 Stop investigating at once, release the run (step 6), and return `needs_user` with the exact error text and the fix that

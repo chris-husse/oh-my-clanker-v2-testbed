@@ -298,6 +298,29 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
   }
 });
 
+// What an investigation's result is when its evidence runs out: a cause the code alone shows is a hypothesis
+// (UNRESOLVED), and a tally-local call that fails once the hold has ended is the hold ending (HOLD_ENDED)
+test('the notes say what a diagnosis needs and that a call failed by the end of the hold is HOLD_ENDED', () => {
+  const read = (path) => readFileSync(join(root, '.omc-project', path), 'utf8').replace(/\s+/g, ' ');
+  const local = read('hook/investigation/investigation-context.local.md');
+  for (const text of [
+    'A diagnosis is a cause the run\'s evidence shows: a row, a response, a `/state` field or a line of the run\'s files that is itself wrong, not only the failing value restated',
+    'a cause read from the code alone, however likely, is a hypothesis',
+    'the result is `UNRESOLVED: <what is unknown>`, with the hypothesis and its file and line; never a diagnosis',
+    'One exception, the end of the hold: a `tally-local` call that fails once the investigation has started, with `<run-dir>/harness.pid` gone, failed because the hold ended',
+    'the result is `HOLD_ENDED: <what was gathered so far>`, not `BLOCKED:`',
+  ]) {
+    assert.ok(local.includes(text), `investigation-context.local.md says ${text}`);
+  }
+  const hold = read('bin/verify.hold.md');
+  for (const text of [
+    'only a diagnosis counts as a completed investigation (the briefing says what makes one: a cause the run\'s evidence shows, never one read from the code alone)',
+    'an error from any `tally-local` call (one made once the investigation started, with `<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4)',
+  ]) {
+    assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
+  }
+});
+
 test('just release passes a run dir with spaces as one argument', { skip: !onPath('just') && 'just is not on PATH' }, () => {
   mkdirSync(join(root, 'target'), { recursive: true });
   const base = mkdtempSync(join(root, 'target', 'release-'));
