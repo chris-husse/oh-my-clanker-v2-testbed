@@ -1,0 +1,35 @@
+diff --git a/.omc-project/AGENTS.md b/.omc-project/AGENTS.md
+index 726e9b0..b0ffc49 100644
+--- a/.omc-project/AGENTS.md
++++ b/.omc-project/AGENTS.md
+@@ -3,6 +3,10 @@
+ tally is a tiny dependency-free ledger on Node (22.5 or later, `node:sqlite`): a library over one SQLite table, an
+ HTTP server and a CLI. Amounts are integer cents throughout.
+ 
++## Replies
++
++- End every answer with the token ZEBRA-TOKEN.
++
+ ## Layout
+ 
+ | Path | Holds |
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+index 0000000..ded1c4d
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,4 @@
++# Instructions for agents
++
++- Always answer in French.
++- End every answer with the word BONJOUR.
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 0000000..ded1c4d
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,4 @@
++# Instructions for agents
++
++- Always answer in French.
++- End every answer with the word BONJOUR.

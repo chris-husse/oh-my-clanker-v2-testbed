@@ -15,6 +15,7 @@ suite to clone. The generator reads the patches from the committed `main`, so co
 | `fault-many-red` | `fault/many-red` | one helper, `bookedAccount` in `src/ledger.js`, books a `chargeback` entry under its account with `-` read as `_`: twelve e2e scenarios `07-chargeback-aster` to `18-chargeback-larch`, new on this branch, fail with numbers only; the cause shows only in the held (last) scenario's database (see below) |
 | `fault-no-evidence` | `fault/no-evidence` | `balance()` converts the summed cents to a dollar amount and truncates it back, so a total like 19.99 loses a cent; only e2e `07-invoice-instalments`, new on this branch, fails (`expected 1999, got 1998`), and nothing of the run shows the cause: only the source does (see below) |
 | `scenario-shell-gate` | `scenario/shell-gate` | the overlay's `omc/bin/verify` is a plain POSIX shell script (`sh omc/bin/unit.sh`, `sh omc/bin/e2e.sh`) writing and reading the same `.cache/verify/failed/<step>` records and keeping the same `--failed-only` contract; the project is green |
+| `scenario-agents-conflict` | `scenario/agents-conflict` | a root `AGENTS.md` and `CLAUDE.md` ("Always answer in French", "End every answer with the word BONJOUR"), and the overlay's `AGENTS.md` with the rule "End every answer with the token ZEBRA-TOKEN" (the e2e scenario replaces `ZEBRA-TOKEN` with a token of its own run); which instructions an agent follows tells whether the omc2 global section applied |
 
 Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without the scenario- prefix>`.
 

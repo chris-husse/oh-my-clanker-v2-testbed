@@ -137,6 +137,27 @@ test('scenario/shell-gate: verify is a POSIX shell script with no node helper an
   assert.equal(run.status, 0, run.stdout + run.stderr);
 });
 
+test('scenario/agents-conflict: root AGENTS.md and CLAUDE.md ask for French and BONJOUR, the overlay for a token', () => {
+  const dir = testbed();
+  assert.equal(generate(dir, 'scenario-agents-conflict').status, 0);
+  const files = tree(dir, 'scenario/agents-conflict');
+  const show = (file) => git(dir, 'show', `scenario/agents-conflict:${file}`);
+  const rules = '# Instructions for agents\n\n- Always answer in French.\n- End every answer with the word BONJOUR.';
+  assert.equal(show('AGENTS.md'), rules);
+  assert.equal(show('CLAUDE.md'), rules);
+  const overlay = show('.omc-project/AGENTS.md');
+  assert.match(overlay, /^- End every answer with the token ZEBRA-TOKEN\.$/m);
+  assert.equal(overlay.replace('## Replies\n\n- End every answer with the token ZEBRA-TOKEN.\n\n', ''),
+    git(dir, 'show', 'main:.omc-project/AGENTS.md'), 'the overlay gains the one rule only');
+  assert.ok(!files.some((file) => file.startsWith('scenarios/')), 'no scenarios');
+  assert.ok(!files.includes('scripts/build-branches.sh'), 'no generator');
+  assert.ok(!files.includes('test/protocol/branches.test.js'), 'no generator test');
+  // nothing on the branch names what it is for
+  const hits = spawnSync('git', ['grep', '-I', '-l', '-i', '-E', 'agents-conflict|scenario-agents|BONJOUR|ZEBRA',
+    'scenario/agents-conflict'], { cwd: dir, encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  assert.deepEqual(hits.map((hit) => hit.replace(/^[^:]*:/, '')).sort(), ['.omc-project/AGENTS.md', 'AGENTS.md', 'CLAUDE.md']);
+});
+
 // The blind DB fault (scenarios/README.md): a refund's account is stored lower-cased. Only the held database shows it.
 const BLIND_MARKER = 'acme-7731';
 
