@@ -685,38 +685,36 @@ test('scenario/unfixable: two unit tests ask balance() of the same state for 0 a
   assert.equal(b.gate('check').status, 1, 'the fix leaves the gate red');
 });
 
-const AMOUNT_TEST = 'amounts format as en-US and parse back';
-// scenario/attempts' six small repairs of src/amount.js, in the order the test's samples reveal them
-const AMOUNT_FIXES = [
-  ['/\\B(?=(\\d{3})+(?!\\d))/;', '/\\B(?=(\\d{3})+(?!\\d))/g;'],
-  ["text.replace(',', '')", "text.replaceAll(',', '')"],
-  ["String(part).padEnd(2, '0')", "String(part).padStart(2, '0')"],
-  ['(cents / 100) | 0', 'Math.trunc(cents / 100)'],
-  ["whole < 0 ? '-' : ''", "cents < 0 ? '-' : ''"],
-  ['Math.sign(Number(whole) || 1)', "text.startsWith('-') ? -1 : 1"],
+const FEES_TEST = 'fees match the ones the pricing service recorded';
+// scenario/attempts' six wrong rates of src/fees.js, in the order the recorded fees reveal them
+const FEE_FIXES = [
+  ['[25_000, 270,', '[25_000, 275,'], ['[100_000, 245,', '[100_000, 249,'], ['[500_000, 230,', '[500_000, 225,'],
+  ['[2_500_000, 195,', '[2_500_000, 199,'], ['[10_000_000, 160,', '[10_000_000, 165,'],
+  ['[50_000_000, 145,', '[50_000_000, 140,'],
 ];
 
-test('scenario/attempts: six small bugs of src/amount.js, each repair revealing the next; all six green the test', () => {
+test('scenario/attempts: six wrong rates in src/fees.js, each repair revealing the next; all six green the test', () => {
   const b = gateBranch('scenario-attempts', 'scenario/attempts');
-  assert.deepEqual(changed(b.dir, 'scenario/attempts').sort(), ['src/amount.js', 'test/unit/amount.test.js']);
+  assert.deepEqual(changed(b.dir, 'scenario/attempts').sort(),
+    ['src/fees.js', 'test/unit/fees.test.js', 'test/unit/fixtures/recorded-fees.json']);
   const check = b.gate('check');
   assert.equal(check.status, 1, 'the check gate is red');
   assert.doesNotMatch(check.stderr, /SyntaxError/, 'lint is green');
   const e2e = b.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs');
   assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
   assert.equal(b.gate('build').status, 0, 'the build is green');
-  const file = join(b.checkout, 'src/amount.js');
-  const failure = (out) => /^ {4}(formatCents\(-?\d+\)|parseCents\('[^']*'\))$/m.exec(out)?.[1];
+  const file = join(b.checkout, 'src/fees.js');
+  const failure = (out) => /^ {4}(fee\(\d+\))$/m.exec(out)?.[1];
   const seen = [];
-  for (const [i, [from, to]] of AMOUNT_FIXES.entries()) {
+  for (const [i, [from, to]] of FEE_FIXES.entries()) {
     const unit = b.run(...TAP_UNITS);
-    assert.deepEqual(notOk(unit.stdout), [AMOUNT_TEST], `before repair ${i + 1}: one failing test`);
+    assert.deepEqual(notOk(unit.stdout), [FEES_TEST], `before repair ${i + 1}: one failing test`);
     seen.push(failure(unit.stdout));
     const source = readFileSync(file, 'utf8');
     assert.ok(source.includes(from), `repair ${i + 1} applies`);
     writeFileSync(file, source.replace(from, to));
   }
-  assert.equal(new Set(seen).size, AMOUNT_FIXES.length, `each repair reveals a new failing case: ${seen.join(' | ')}`);
+  assert.equal(new Set(seen).size, FEE_FIXES.length, `each repair reveals a new failing case: ${seen.join(' | ')}`);
   const fixed = b.gate('check');
   assert.equal(fixed.status, 0, fixed.stdout + fixed.stderr);
 });

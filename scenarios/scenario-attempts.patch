@@ -1,52 +1,114 @@
-diff --git a/src/amount.js b/src/amount.js
+diff --git a/src/fees.js b/src/fees.js
 new file mode 100644
-index 0000000..bc91ddc
+index 0000000..834401f
 --- /dev/null
-+++ b/src/amount.js
-@@ -0,0 +1,16 @@
-+// Amounts as people write them: integer cents to en-US text ("-1,234.05") and back.
++++ b/src/fees.js
+@@ -0,0 +1,23 @@
++// The posting fee of an amount, in cents: the bracket the amount falls in gives its rate in basis points, and the fee
++// is never below the bracket's minimum. The schedule is the pricing team's, as published for 2026.
++const SCHEDULE = [
++  // up to (cents), basis points, minimum (cents)
++  [10_000, 290, 30],
++  [25_000, 270, 30],
++  [50_000, 260, 30],
++  [100_000, 245, 35],
++  [250_000, 240, 35],
++  [500_000, 230, 40],
++  [1_000_000, 210, 40],
++  [2_500_000, 195, 50],
++  [5_000_000, 180, 50],
++  [10_000_000, 160, 60],
++  [50_000_000, 145, 75],
++  [Infinity, 120, 100],
++];
 +
-+const GROUPS = /\B(?=(\d{3})+(?!\d))/;
-+
-+export function formatCents(cents) {
-+  const whole = (cents / 100) | 0;
-+  const part = Math.abs(cents % 100);
-+  const sign = whole < 0 ? '-' : '';
-+  return `${sign}${String(Math.abs(whole)).replace(GROUPS, ',')}.${String(part).padEnd(2, '0')}`;
++export function fee(cents) {
++  const amount = Math.abs(cents);
++  const [, bps, minimum] = SCHEDULE.find(([upTo]) => amount <= upTo);
++  return Math.max(minimum, Math.round((amount * bps) / 10_000));
 +}
-+
-+export function parseCents(text) {
-+  const [whole, frac = '0'] = text.replace(',', '').split('.');
-+  const sign = Math.sign(Number(whole) || 1);
-+  return Number(whole) * 100 + sign * Number(frac.padEnd(2, '0'));
-+}
-diff --git a/test/unit/amount.test.js b/test/unit/amount.test.js
+diff --git a/test/unit/fees.test.js b/test/unit/fees.test.js
 new file mode 100644
-index 0000000..28f98bb
+index 0000000..2ad321e
 --- /dev/null
-+++ b/test/unit/amount.test.js
-@@ -0,0 +1,24 @@
++++ b/test/unit/fees.test.js
+@@ -0,0 +1,13 @@
 +import { test } from 'node:test';
 +import assert from 'node:assert/strict';
-+import { formatCents, parseCents } from '../../src/amount.js';
++import { readFileSync } from 'node:fs';
++import { fee } from '../../src/fees.js';
 +
-+// Amounts of every size an account sees, from a fixed seed: the same samples on every run.
-+function* samples(count, seed = 20260101) {
-+  let state = seed;
-+  const next = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
-+  for (let i = 0; i < count; i += 1) {
-+    const digits = 1 + Math.floor(next() * 13);
-+    const cents = Math.floor(next() * 10 ** digits);
-+    yield cents !== 0 && next() < 0.3 ? -cents : cents;
-+  }
-+}
++// Fees the pricing service charged for a spread of amounts: the ledger has to charge the same.
++const { fees } = JSON.parse(readFileSync(new URL('./fixtures/recorded-fees.json', import.meta.url), 'utf8'));
 +
-+const enUS = (cents) => (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-+
-+test('amounts format as en-US and parse back', () => {
-+  for (const cents of samples(500)) {
-+    const text = enUS(cents);
-+    assert.equal(formatCents(cents), text, `formatCents(${cents})`);
-+    assert.equal(parseCents(text), cents, `parseCents('${text}')`);
++test('fees match the ones the pricing service recorded', () => {
++  for (const [cents, expected] of fees) {
++    assert.equal(fee(cents), expected, `fee(${cents})`);
 +  }
 +});
+diff --git a/test/unit/fixtures/recorded-fees.json b/test/unit/fixtures/recorded-fees.json
+new file mode 100644
+index 0000000..3b96f76
+--- /dev/null
++++ b/test/unit/fixtures/recorded-fees.json
+@@ -0,0 +1,60 @@
++{"source":"recorded from the pricing service, schedule of 2026","fees":[[2993,87],
++  [5423,157],
++  [5971,173],
++  [6722,195],
++  [9871,286],
++  [11119,306],
++  [17939,493],
++  [23049,634],
++  [23730,653],
++  [24961,686],
++  [26476,688],
++  [29834,776],
++  [30241,786],
++  [34602,900],
++  [49820,1295],
++  [51513,1283],
++  [53600,1335],
++  [83685,2084],
++  [90479,2253],
++  [96201,2395],
++  [109557,2629],
++  [130585,3134],
++  [174394,4185],
++  [192718,4625],
++  [211184,5068],
++  [256802,5778],
++  [267229,6013],
++  [286587,6448],
++  [450684,10140],
++  [473080,10644],
++  [858245,18023],
++  [869394,18257],
++  [908811,19085],
++  [917926,19276],
++  [931607,19564],
++  [1054297,20981],
++  [1225411,24386],
++  [1508515,30019],
++  [1988282,39567],
++  [2113761,42064],
++  [3248530,58474],
++  [3282223,59080],
++  [3457695,62239],
++  [4475465,80558],
++  [4686122,84350],
++  [6002818,99046],
++  [7075596,116747],
++  [7310029,120615],
++  [7790432,128542],
++  [7870300,129860],
++  [21933456,307068],
++  [24130626,337829],
++  [34031654,476443],
++  [38697906,541771],
++  [43610645,610549],
++  [62937390,755249],
++  [85603768,1027245],
++  [109919745,1319037],
++  [136059553,1632715],
++  [138030369,1656364]]}
