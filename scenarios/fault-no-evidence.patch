@@ -1,0 +1,44 @@
+diff --git a/e2e/scenarios/07-invoice-instalments.mjs b/e2e/scenarios/07-invoice-instalments.mjs
+new file mode 100644
+index 0000000..15fe034
+--- /dev/null
++++ b/e2e/scenarios/07-invoice-instalments.mjs
+@@ -0,0 +1,22 @@
++import { expectEqual } from '../lib/expect.mjs';
++
++const ACCOUNT = 'Fir-0729';
++
++export default {
++  id: '07-invoice-instalments',
++  title: 'an invoice paid in two instalments adds up in the account balance',
++  async run({ base, fetch }) {
++    const post = async (cents, memo) => {
++      const res = await fetch(`${base}/entries`, {
++        method: 'POST',
++        body: JSON.stringify({ account: ACCOUNT, cents, memo }),
++      });
++      expectEqual(res.status, 201);
++    };
++    await post(1500, 'invoice 0729, first instalment');
++    await post(499, 'invoice 0729, second instalment');
++    const res = await fetch(`${base}/balance/${ACCOUNT}`);
++    expectEqual(res.status, 200);
++    expectEqual((await res.json()).cents, 1999);
++  },
++};
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..8ffcda0 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -21,9 +21,9 @@ export function post(db, { account, cents, memo }) {
+ 
+ export function balance(db, account) {
+   const row = db
+-    .prepare('SELECT COALESCE(SUM(cents), 0) AS cents FROM entries WHERE account = ?')
++    .prepare('SELECT COALESCE(SUM(cents), 0) / 100.0 AS amount FROM entries WHERE account = ?')
+     .get(account);
+-  return Number(row.cents);
++  return Math.trunc(row.amount * 100);
+ }
+ 
+ export function report(db) {

@@ -13,6 +13,7 @@ suite to clone. The generator reads the patches from the committed `main`, so co
 | `fault-blind-state` | `fault/blind-state` | a post invalidates the cached balance under the lower-cased account; only e2e `06-supplier-balance` fails (`expected 600, got 100`), the cause shows only in the held server's `cache` counters (see below) |
 | `fault-two-red` | `fault/two-red` | two independent faults: `report()` sorts descending (unit test `report is sorted by account` red, no e2e scenario touched), and `POST /entries` books an entry whose memo starts with `adjust` under the upper-cased account (only e2e `07-adjustment-memo`, new on this branch, fails, `expected 925, got 800`; the cause shows only in the held database, see below) |
 | `fault-many-red` | `fault/many-red` | one helper, `bookedAccount` in `src/ledger.js`, books a `chargeback` entry under its account with `-` read as `_`: twelve e2e scenarios `07-chargeback-aster` to `18-chargeback-larch`, new on this branch, fail with numbers only; the cause shows only in the held (last) scenario's database (see below) |
+| `fault-no-evidence` | `fault/no-evidence` | `balance()` converts the summed cents to a dollar amount and truncates it back, so a total like 19.99 loses a cent; only e2e `07-invoice-instalments`, new on this branch, fails (`expected 1999, got 1998`), and nothing of the run shows the cause: only the source does (see below) |
 | `scenario-shell-gate` | `scenario/shell-gate` | the overlay's `omc/bin/verify` is a plain POSIX shell script (`sh omc/bin/unit.sh`, `sh omc/bin/e2e.sh`) writing and reading the same `.cache/verify/failed/<step>` records and keeping the same `--failed-only` contract; the project is green |
 
 Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without the scenario- prefix>`.
@@ -146,3 +147,31 @@ scenario and 2 to 4 more); only the last, `18-chargeback-larch`, is held.
 
 `test/protocol/branches.test.js` (`fault/two-red: …`, `fault/many-red: …`) proves all of this on the generated
 branches, through `tally-local` on the held run, then fixes and reruns them green.
+
+## `fault-no-evidence`: no live trace
+
+The fault, in `src/ledger.js` `balance()` (two lines): the sum is taken as a dollar amount and turned back into cents
+with a truncation,
+
+    .prepare('SELECT COALESCE(SUM(cents), 0) / 100.0 AS amount FROM entries WHERE account = ?')
+    ...
+    return Math.trunc(row.amount * 100);
+
+so a total whose dollar amount is not exact in floating point loses a cent (`19.99 * 100` is `1998.9999999999998`).
+`e2e/scenarios/07-invoice-instalments.mjs`, added by the patch (the base suite stays 01 to 06), is the last scenario,
+so it is the one held. It posts 1500 and 499 to `Fir-0729` (`invoice 0729, first instalment` and `second
+instalment`) and expects `GET /balance/Fir-0729` to answer 1999; with the fault it fails `expected 1999, got 1998`.
+
+1. Lint and the unit tests stay green: every total they read is exact in dollars (1050, 7, 25, 100, 120).
+2. Exactly one e2e scenario fails, `07-invoice-instalments`, the last one; its message is numbers only. The base
+   scenarios' totals (1000, 7, 1050, 1075, 100, 600) are exact, so they pass.
+3. Nothing of the run shows the cause. The held database holds exactly the two posted rows, 1999 cents in all;
+   `GET /state` answers 2 entries, 1 account, 1999 total cents, one cache miss and the last request as sent;
+   `output.txt` and `state.json` are those of a correct server but the balance response, `1998`, which only restates
+   the failure; `http_get /balance/Fir-0729` answers the same 1998. The dollar amount is never stored and never
+   served: the cause is visible only in the source.
+4. The fix is `balance()` as on `main`.
+
+`test/protocol/branches.test.js` (`fault/no-evidence: …`) proves all four on the generated branch through
+`tally-local` on the held run, then fixes it and compares the fixed run's `output.txt` and `state.json` with the
+held run's: they differ in the failing number only.

@@ -458,6 +458,65 @@ test('fault/many-red: lint and unit green, twelve e2e scenarios red with numbers
   assert.match(fixed.out, /^18 passed, 0 failed/m);
 });
 
+// No live trace (scenarios/README.md): balance() sums the cents, divides by 100.0 and truncates the product with 100
+// back to cents, so a total whose dollar amount is not exact in floating point (19.99) loses a cent. The stored
+// rows, /state, the run's files and every response are what a correct server gives, but the one balance number.
+const NO_EVIDENCE = 'tally_07_invoice_instalments';
+const NO_EVIDENCE_ROWS = [[1, 'Fir-0729', 1500, 'invoice 0729, first instalment'],
+  [2, 'Fir-0729', 499, 'invoice 0729, second instalment']];
+
+// The lines of a scenario's output.txt with its port, its stack frames and its result line left out.
+function requestLines(text) {
+  return text.split('\n').filter((line) => /^[<>] /.test(line));
+}
+
+test('fault/no-evidence: lint and unit green, only 07-invoice-instalments red with numbers only, no trace of the cause', async () => {
+  const held = await heldBranch('fault-no-evidence', 'fault/no-evidence');
+  let heldOutput;
+  let heldState;
+  try {
+    assert.deepEqual(resultLines(held.out), [...BASE_PASSES, 'FAIL 07-invoice-instalments: expected 1999, got 1998']);
+    assertFilesBlind(held, /trunc|100\.0|\bamount\b|dollar/i);
+    assert.equal(readFileSync(join(held.runDir, 'stack.env'), 'utf8'),
+      `TALLY_DATABASE=${NO_EVIDENCE}\nTALLY_DB_PATH=data/${NO_EVIDENCE}.db\n`);
+    const folder = join(held.runDir, 'scenarios/07-invoice-instalments');
+    heldOutput = readFileSync(join(folder, 'output.txt'), 'utf8');
+    heldState = JSON.parse(readFileSync(join(folder, 'state.json'), 'utf8'));
+
+    // the held database: exactly the posted rows, their total the expected one
+    const rows = await held.mcp.call('db_query', { database: NO_EVIDENCE, sql: 'SELECT id, account, cents, memo FROM entries' });
+    assert.equal(rows.isError, false, rows.text);
+    assert.deepEqual(JSON.parse(rows.text).rows, NO_EVIDENCE_ROWS);
+    const total = await held.mcp.call('db_query', {
+      database: NO_EVIDENCE,
+      sql: 'SELECT account, COUNT(*), SUM(cents) FROM entries GROUP BY account',
+    });
+    assert.deepEqual(JSON.parse(total.text).rows, [['Fir-0729', 2, 1999]]);
+    // the held server: /state is a correct server's view; /balance restates the failure's number, nothing more
+    const state = await held.mcp.call('http_get', { port: held.port, path: '/state' });
+    assert.equal(state.isError, false, state.text);
+    assert.deepEqual(JSON.parse(state.text).body, {
+      entries: 2, accounts: 1, total_cents: 1999, cache: { hits: 0, misses: 1, invalidations: 0 },
+      last_request: { method: 'GET', path: '/balance/Fir-0729', account: 'Fir-0729' },
+    });
+    const balance = await held.mcp.call('http_get', { port: held.port, path: '/balance/Fir-0729' });
+    assert.deepEqual(JSON.parse(balance.text), { status: 200, body: { account: 'Fir-0729', cents: 1998 } });
+  } finally {
+    await held.close();
+  }
+  const fixed = afterFix(held, ['src/ledger.js']);
+  assert.deepEqual([fixed.unit, fixed.e2e], [0, 0], fixed.out);
+  assert.match(fixed.out, /^7 passed, 0 failed/m);
+  // the held run's files differ from the fixed run's in the failing number only
+  const folder = join(held.checkout, 'target/after-fix/scenarios/07-invoice-instalments');
+  const fixedOutput = readFileSync(join(folder, 'output.txt'), 'utf8');
+  assert.deepEqual(requestLines(heldOutput),
+    requestLines(fixedOutput).map((line) => line.replace('"cents":1999}', '"cents":1998}')));
+  assert.notDeepEqual(requestLines(heldOutput), requestLines(fixedOutput));
+  const withoutTimes = (snapshot) => ({ ...snapshot, entries: snapshot.entries.map(({ at, ...row }) => row) });
+  assert.deepEqual(withoutTimes(heldState), withoutTimes(JSON.parse(readFileSync(join(folder, 'state.json'), 'utf8'))));
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -482,9 +541,9 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
-    'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+    'no-evidence', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
-    'fault/blind-state', 'fault/two-red', 'fault/many-red']) {
+    'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
