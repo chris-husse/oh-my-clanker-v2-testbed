@@ -702,9 +702,16 @@ function mailbox(b, folder) {
 }
 
 // A checkout of main with the files of `folder` replayed on a branch of its own; the replayed commits' subjects.
-function replay(b, folder, name) {
+// `onBranch`: the replay starts from the scenario branch itself, as the end-to-end container does (its `fixture/` folder
+// removed in a commit that becomes the clone's `main`), for a branch whose own files the mailbox files build on.
+function replay(b, folder, name, { onBranch = false } = {}) {
   const work = join(b.dir, `replay-${name}`);
-  git(b.dir, 'clone', '--quiet', '--branch', 'main', b.dir, work);
+  git(b.dir, 'clone', '--quiet', '--branch', onBranch ? b.branch : 'main', b.dir, work);
+  if (onBranch) {
+    git(work, 'rm', '--quiet', '-r', 'fixture');
+    git(work, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '--quiet', '-m', 'base');
+    git(work, 'branch', '--force', 'main', 'HEAD');
+  }
   git(work, 'switch', '--quiet', '-c', name);
   for (const file of mailbox(b, folder)) {
     const mail = join(b.dir, `${name}-${file.split('/').pop()}`);
@@ -796,6 +803,63 @@ test('scenario/audit-moved-base: a finished two-task branch, and a base commit t
     ['README.md', 'bin/tally', 'src/ledger.js', 'test/unit/cli.test.js', 'test/unit/ledger.test.js']);
 });
 
+test('scenario/decisions: two protected rule pages, an empty decision log, and three fixture branches as mailbox files', () => {
+  const b = branchOf('scenario-decisions', 'scenario/decisions');
+  const config = b.show('.omc-project/config.yaml');
+  assert.match(config, /^  protected: \["docs\/rules\/\*\.md"\]/m);
+  assert.match(config, /^  decision_log: docs\/decision-log\.md/m);
+  assert.deepEqual(changed(b.dir, 'scenario/decisions').filter((f) => !f.startsWith('fixture/')), [
+    '.omc-project/AGENTS.md', '.omc-project/config.yaml', 'docs/decision-log.md', 'docs/rules/ledger.md',
+    'docs/rules/reports.md']);
+  const ledger = b.show('docs/rules/ledger.md');
+  const reports = b.show('docs/rules/reports.md');
+  assert.deepEqual([...ledger.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Entries', 'Balances']);
+  assert.deepEqual([...reports.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Rows', 'Output']);
+  assert.match(ledger, /never changed or deleted/, 'the rule the void fixture runs into');
+  assert.match(ledger, /`tally add` of a negative amount larger than the balance books it/, 'a rule that says nothing of transfers');
+  assert.match(b.show('docs/decision-log.md'), /Next: 1\*$/m, 'an empty log');
+  assert.deepEqual(['limit', 'transfer', 'void'].map((v) => mailbox(b, `fixture/${v}`).length), [3, 2, 2]);
+
+  for (const [variant, subjects, stem] of [
+    ['void', ['Design: erase a mistaken entry', 'Plan: Erase a mistaken entry, 1 task'], '2026-11-24-void-entry'],
+    ['transfer', ['Design: move money between two accounts', 'Plan: Move money between two accounts, 1 task'],
+      '2026-11-24-transfer'],
+    ['limit', ['Design: erase a mistaken entry', 'Plan: Erase a mistaken entry, 1 task',
+      'Implement: the log and the question files before the check'], '2026-11-24-void-entry'],
+  ]) {
+    const { work, subjects: got } = replay(b, `fixture/${variant}`, variant, { onBranch: true });
+    assert.deepEqual(got, subjects, variant);
+    const files = git(work, 'diff', '--name-only', 'main', 'HEAD').split('\n').sort();
+    assert.deepEqual(files, [
+      ...(variant === 'limit' ? ['docs/decision-log.md', 'docs/reviews/2026-11-24-void-entry-1.md'] : []),
+      `docs/superpowers/plans/${stem}-plan.md`, `docs/superpowers/specs/${stem}-design.md`]);
+    const plan = readFileSync(join(work, `docs/superpowers/plans/${stem}-plan.md`), 'utf8');
+    assert.deepEqual([...plan.matchAll(/^### Task (\d+): /gm)].map((m) => m[1]), ['1']);
+    assert.equal([...plan.matchAll(/^Complexity: simple$/gm)].length, 1);
+    assert.equal([...plan.matchAll(/^\s*- \[ \]/gm)].length, 5);
+    assert.doesNotMatch(plan.replace(/^.*Co-Authored-By:.*$/gm, ''), /\b(?:sonnet|opus|haiku|fable)\b/i, 'complexity only');
+    assert.match(plan, /`docs\/rules\/ledger\.md`/, 'the plan names the rules as the yardstick');
+    const record = readFileSync(join(work, `docs/superpowers/specs/${stem}-design.md`), 'utf8');
+    assert.match(record, /^## Decisions and the pages they change$/m);
+    assert.doesNotMatch(record, /docs\/rules|never changed or deleted/, 'the record does not mention the rule it runs into');
+    assert.equal(unitTests(work).status, 0, `${variant}: no code yet, the unit tests of main stay green`);
+  }
+
+  // the limit fixture: five entries recorded `disagreed`, none applied, each with its question in the run's question file
+  const limit = replay(b, 'fixture/limit', 'limit-log', { onBranch: true }).work;
+  const log = readFileSync(join(limit, 'docs/decision-log.md'), 'utf8');
+  assert.match(log, /Next: 6\*$/m);
+  assert.deepEqual([...log.matchAll(/^### (\d+) /gm)].map((m) => m[1]), ['1', '2', '3', '4', '5']);
+  assert.equal([...log.matchAll(/^\*\*Automated\.\*\* disagreed$/gm)].length, 5);
+  assert.equal([...log.matchAll(/^\*\*Status\.\*\* recorded 2026-11-24$/gm)].length, 5, 'recorded, none applied');
+  const questions = readFileSync(join(limit, 'docs/reviews/2026-11-24-void-entry-1.md'), 'utf8');
+  assert.match(questions, /^# Questions: feature\/void-entry run 1$/m);
+  assert.deepEqual([...questions.matchAll(/^\*\*Status\.\*\* (.+)$/gm)].map((m) => m[1]),
+    ['decision 1', 'decision 2', 'decision 3', 'decision 4', 'decision 5']);
+  assert.equal([...questions.matchAll(/^\*\*Subagent\.\*\* \(2\), disagree\.$/gm)].length, 5);
+  assert.equal(git(limit, 'diff', '--name-only', 'main', 'HEAD', '--', 'docs/rules'), '', 'the rule pages are as on main');
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -821,12 +885,13 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
     'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'gate-cheat', 'unfixable', 'with-plan', 'audit-moved-base',
+    'scenario-decisions', 'scenario/decisions',
     'branches.test.js', 'scenarios/fault',
     'scenarios/scenario', 'testbed'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
     'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence', 'fault/unit-red', 'scenario/gate-flake',
     'scenario/slow-gate', 'scenario/gate-cheat', 'scenario/unfixable', 'scenario/with-plan',
-    'scenario/audit-moved-base']) {
+    'scenario/audit-moved-base', 'scenario/decisions']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {

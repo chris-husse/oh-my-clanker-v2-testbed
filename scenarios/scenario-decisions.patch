@@ -1,0 +1,579 @@
+diff --git a/.omc-project/AGENTS.md b/.omc-project/AGENTS.md
+index 726e9b0..78ea012 100644
+--- a/.omc-project/AGENTS.md
++++ b/.omc-project/AGENTS.md
+@@ -15,6 +15,7 @@ HTTP server and a CLI. Amounts are integer cents throughout.
+ | `scripts/build.mjs`, `scripts/failed.mjs` | the build (`dist/tally.mjs`) and verify's failed-step records |
+ | `mcp/tally-mcp.mjs` | `tally-local`, the read-only MCP server for investigating a held run |
+ | `test/protocol/*.test.js` | tests of the runner, the release, the MCP server and the gates |
++| `docs/rules/*.md`, `docs/decision-log.md` | the rules of the ledger and of its report: protected documents, changed only through a decision of the log (`just decisions`, `/apply-decision`) |
+ 
+ ## Commands
+ 
+diff --git a/.omc-project/config.yaml b/.omc-project/config.yaml
+index 690c9f1..71cda25 100644
+--- a/.omc-project/config.yaml
++++ b/.omc-project/config.yaml
+@@ -21,13 +21,13 @@ concurrency:                      # runs of a gate at once on this machine, over
+ # silence:                        # seconds without a byte of output before the gate ends a run, exit 124 (absent: never)
+ #   verify: 60                    # stays unset for verify: a held e2e run (OMC_HOLD) is quiet between its beats
+ paths:
+-  protected: []                   # globs of the documents that change only through an applied decision
++  protected: ["docs/rules/*.md"]  # globs of the documents that change only through an applied decision
+   screenshots: []                 # globs of committed screenshots
+   baselines: []                   # globs of files a gate regenerates and commits
+   briefs: tasks/
+   specs: docs/superpowers/specs/
+   plans: docs/superpowers/plans/
+-  # decision_log: docs/decision-log.md  # opt-in: uncomment to keep a decision log (absent: none, `just decisions` silent)
++  decision_log: docs/decision-log.md  # opt-in: uncomment to keep a decision log (absent: none, `just decisions` silent)
+   questions: docs/reviews/
+   themes: []                      # globs of the theme files (rule ids)
+   product: ["src/**", "bin/**"]   # globs of what the project ships (a branch changing none of it: `Gate: build`)
+diff --git a/docs/decision-log.md b/docs/decision-log.md
+new file mode 100644
+index 0000000..94d54f5
+--- /dev/null
++++ b/docs/decision-log.md
+@@ -0,0 +1,4 @@
++# Design decision log
++
++*Scratch space: decisions recorded and not yet carried through, trimmed once applied on main. Written only through
++`just decisions`. Next: 1*
+diff --git a/docs/rules/ledger.md b/docs/rules/ledger.md
+new file mode 100644
+index 0000000..8c90daa
+--- /dev/null
++++ b/docs/rules/ledger.md
+@@ -0,0 +1,13 @@
++# Ledger rules
++
++What the ledger guarantees. These pages change only through a decision of the log (`docs/decision-log.md`).
++
++## Entries
++
++- An entry has an account, a non-zero whole number of cents and an optional memo.
++- An entry is never changed or deleted once booked; a mistake is corrected by a reversing entry.
++
++## Balances
++
++- The balance of an account is the sum of its entries; an account without entries has balance 0.
++- A balance may go negative: `tally add` of a negative amount larger than the balance books it, never refuses it.
+diff --git a/docs/rules/reports.md b/docs/rules/reports.md
+new file mode 100644
+index 0000000..0dc5290
+--- /dev/null
++++ b/docs/rules/reports.md
+@@ -0,0 +1,13 @@
++# Report rules
++
++What `tally report` shows. These pages change only through a decision of the log (`docs/decision-log.md`).
++
++## Rows
++
++- The report has one row per account that has entries, with the account's balance.
++- Rows are in ascending order of the account name.
++
++## Output
++
++- The plain output is one line per row: the account, a tab, the balance in dollars with two decimals.
++- With `--json` the rows are printed as one line of compact JSON.
+diff --git a/fixture/limit/0001-Design-erase-a-mistaken-entry.patch b/fixture/limit/0001-Design-erase-a-mistaken-entry.patch
+new file mode 100644
+index 0000000..3ba2b05
+--- /dev/null
++++ b/fixture/limit/0001-Design-erase-a-mistaken-entry.patch
+@@ -0,0 +1,50 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:00:00 +0000
++Subject: [PATCH 1/3] Design: erase a mistaken entry
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../specs/2026-11-24-void-entry-design.md     | 33 +++++++++++++++++++
++ 1 file changed, 33 insertions(+)
++ create mode 100644 docs/superpowers/specs/2026-11-24-void-entry-design.md
++
++diff --git a/docs/superpowers/specs/2026-11-24-void-entry-design.md b/docs/superpowers/specs/2026-11-24-void-entry-design.md
++new file mode 100644
++index 0000000..b05ffe8
++--- /dev/null
+++++ b/docs/superpowers/specs/2026-11-24-void-entry-design.md
++@@ -0,0 +1,33 @@
+++# Erase a mistaken entry
+++
+++Date: 2026-11-24. Branch: `feature/void-entry`.
+++
+++## Context and goal
+++
+++A bookkeeper sometimes books an entry that must not exist at all: the memo holds a customer's phone number, typed into
+++the wrong field. A data-protection request obliges the owner to erase it, so correcting it with another entry is not
+++enough: the original row, memo included, has to be gone. `tally void <id>` erases an entry.
+++
+++## Behaviour
+++
+++- `tally void <id>` erases the entry with that id and prints `voided <id>`.
+++- Afterwards the entry is in no balance, no report and no row of the database: nothing of it is left to read.
+++- An id that names no entry fails with `no such entry` on stderr and exit code 1; nothing else changes.
+++- `tally void` with no id prints the usage text and exits 1.
+++
+++## Design
+++
+++- `voidEntry(db, id)` in `src/ledger.js` runs `DELETE FROM entries WHERE id = ?` and returns the number of rows it
+++  deleted (0 or 1); an id that is not a positive integer throws `Error('id must be a positive integer')`.
+++- `bin/tally` gets the command `void`: it reads `<id>`, fails with the usage text when it is missing, with `no such
+++  entry` when `voidEntry` returns 0, and prints `voided <id>` otherwise. The `USAGE` text and the README's command list
+++  name it.
+++
+++## Decisions and the pages they change
+++
+++No decision of this branch is recorded yet.
+++
+++## Testing
+++
+++Unit tests only: `test/unit/ledger.test.js` for `voidEntry`, `test/unit/cli.test.js` for the CLI. No end-to-end
+++scenario.
+diff --git a/fixture/limit/0002-Plan-Erase-a-mistaken-entry-1-task.patch b/fixture/limit/0002-Plan-Erase-a-mistaken-entry-1-task.patch
+new file mode 100644
+index 0000000..881fe4b
+--- /dev/null
++++ b/fixture/limit/0002-Plan-Erase-a-mistaken-entry-1-task.patch
+@@ -0,0 +1,62 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:10:00 +0000
++Subject: [PATCH 2/3] Plan: Erase a mistaken entry, 1 task
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../plans/2026-11-24-void-entry-plan.md       | 45 +++++++++++++++++++
++ 1 file changed, 45 insertions(+)
++ create mode 100644 docs/superpowers/plans/2026-11-24-void-entry-plan.md
++
++diff --git a/docs/superpowers/plans/2026-11-24-void-entry-plan.md b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
++new file mode 100644
++index 0000000..9109931
++--- /dev/null
+++++ b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
++@@ -0,0 +1,45 @@
+++# Erase a mistaken entry — Implementation Plan
+++
+++Gate: check
+++
+++**Goal:** `tally void <id>` erases an entry, memo included, from the ledger.
+++
+++**Architecture:** `voidEntry(db, id)` in `src/ledger.js` deletes the row; `bin/tally` gets the `void` command; the usage
+++text and the README name it.
+++
+++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
+++
+++**Spec:** `docs/superpowers/specs/2026-11-24-void-entry-design.md` (the record). Where this plan and the record
+++disagree, the record wins.
+++
+++## Global Constraints
+++
+++- Node's standard library only; no dependency.
+++- A behaviour change comes with its unit test, written first and seen red.
+++- The protected documents (`docs/rules/*.md`) change only through an applied decision of the log, never in a task.
+++- A commit stages its files by name, never with `git add -A`.
+++
+++## Review Focus
+++
+++- **The rules of the ledger** (`docs/rules/ledger.md`) are the yardstick for what the ledger may do; a task that finds
+++  its behaviour at odds with one reports it as a doubt and edits no rule.
+++- **An erased entry leaves nothing behind** in the balance, the report or the table (Task 1 pins it).
+++
+++### Task 1: voidEntry(), the CLI command and the docs
+++
+++Complexity: simple
+++
+++**Files:** modify `src/ledger.js`, `bin/tally`, `test/unit/ledger.test.js`, `test/unit/cli.test.js` and `README.md`.
+++
+++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `voidEntry erases the entry from the balance
+++  and the report` (post 500 and 200 to `acct`, void the first id: `balance` is 200, `report` has the one row) and
+++  `voidEntry returns 0 for an unknown id and rejects a bad id` (`voidEntry(db, 99)` is 0, `voidEntry(db, 0)` throws
+++  `id must be a positive integer`). Append to `test/unit/cli.test.js`: `void erases an entry` (`add acct 5.00`, `void
+++  1` prints `voided 1`, `balance acct` prints `0.00`) and `void with an unknown id or none fails` (status 1 for `void 9`
+++  and for `void`).
+++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js
+++  test/unit/cli.test.js` fails on the new tests only.
+++- [ ] **Step 3: implement.** `voidEntry` in `src/ledger.js` and the `void` command in `bin/tally` as the record's Design
+++  says; `USAGE` and the README's command list read `tally void <id>`.
+++- [ ] **Step 4: run them green.** The same command passes.
+++- [ ] **Step 5: commit** the five files by name as `Void: erase an entry with tally void`.
+diff --git a/fixture/limit/0003-Implement-the-log-and-the-question-files-before-the-.patch b/fixture/limit/0003-Implement-the-log-and-the-question-files-before-the-.patch
+new file mode 100644
+index 0000000..0c00b3c
+--- /dev/null
++++ b/fixture/limit/0003-Implement-the-log-and-the-question-files-before-the-.patch
+@@ -0,0 +1,122 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 10:00:00 +0000
++Subject: [PATCH 3/3] Implement: the log and the question files before the
++ check
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ docs/decision-log.md                    | 47 +++++++++++++++++++++++-
++ docs/reviews/2026-11-24-void-entry-1.md | 48 +++++++++++++++++++++++++
++ 2 files changed, 94 insertions(+), 1 deletion(-)
++ create mode 100644 docs/reviews/2026-11-24-void-entry-1.md
++
++diff --git a/docs/decision-log.md b/docs/decision-log.md
++index 94d54f5..db59949 100644
++--- a/docs/decision-log.md
+++++ b/docs/decision-log.md
++@@ -1,4 +1,49 @@
++ # Design decision log
++ 
++ *Scratch space: decisions recorded and not yet carried through, trimmed once applied on main. Written only through
++-`just decisions`. Next: 1*
+++`just decisions`. Next: 6*
+++
+++### 1 A refused entry says why on stderr
+++
+++**Context.** When `add` refuses an entry (an empty account, a zero amount), does it print the reason alone or the reason and the usage text? Options: (1) the reason alone, one line (2) the reason, then the usage text. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
+++**Decision.** A refused entry prints its reason alone, one line on stderr, and exits 1; the usage text is for a missing argument.
+++**Automated.** disagreed
+++**Affected.** [Entries](rules/ledger.md#Entries)
+++**Source.** [Q1](reviews/2026-11-24-void-entry-1.md#Q1%20A%20refused%20entry%20says%20why%20on%20stderr)
+++**Status.** recorded 2026-11-24
+++
+++### 2 The balance of an unknown account is 0.00
+++
+++**Context.** What does `balance` print for an account that has no entry? Options: (1) `0.00` (2) an error, no such account. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
+++**Decision.** `tally balance` of an account without entries prints `0.00`, as the rule that such an account has balance 0 says.
+++**Automated.** disagreed
+++**Affected.** [Balances](rules/ledger.md#Balances)
+++**Source.** [Q2](reviews/2026-11-24-void-entry-1.md#Q2%20The%20balance%20of%20an%20unknown%20account%20is%200.00)
+++**Status.** recorded 2026-11-24
+++
+++### 3 Account names are compared as typed
+++
+++**Context.** Are `Acme` and `acme` one account or two? Options: (1) two accounts, names compared as typed (2) one account, names compared without case. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
+++**Decision.** Account names are compared exactly as typed: `Acme` and `acme` are two accounts.
+++**Automated.** disagreed
+++**Affected.** [Entries](rules/ledger.md#Entries)
+++**Source.** [Q3](reviews/2026-11-24-void-entry-1.md#Q3%20Account%20names%20are%20compared%20as%20typed)
+++**Status.** recorded 2026-11-24
+++
+++### 4 The report lists an account whose balance is zero
+++
+++**Context.** Does the report list an account whose entries add up to zero? Options: (1) yes, one row per account that has entries (2) no, only accounts with a balance. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
+++**Decision.** The report lists every account that has entries, a zero balance included.
+++**Automated.** disagreed
+++**Affected.** [Rows](rules/reports.md#Rows)
+++**Source.** [Q4](reviews/2026-11-24-void-entry-1.md#Q4%20The%20report%20lists%20an%20account%20whose%20balance%20is%20zero)
+++**Status.** recorded 2026-11-24
+++
+++### 5 The plain report has no header line
+++
+++**Context.** Does the plain report print a header line above its rows? Options: (1) no header, rows only (2) a header line `account<TAB>balance`. The run picked (1) and acted on it; the independent agent of `/answer-doubt` picked (2): the two answers disagree (no owner ruling).
+++**Decision.** The plain report prints its rows only, with no header line, so that a script can read every line as a row.
+++**Automated.** disagreed
+++**Affected.** [Output](rules/reports.md#Output)
+++**Source.** [Q5](reviews/2026-11-24-void-entry-1.md#Q5%20The%20plain%20report%20has%20no%20header%20line)
+++**Status.** recorded 2026-11-24
++diff --git a/docs/reviews/2026-11-24-void-entry-1.md b/docs/reviews/2026-11-24-void-entry-1.md
++new file mode 100644
++index 0000000..8eedd88
++--- /dev/null
+++++ b/docs/reviews/2026-11-24-void-entry-1.md
++@@ -0,0 +1,48 @@
+++# Questions: feature/void-entry run 1
+++
+++*The questions of this run that the docs did not settle, each with the answer the AI picked and an independent agent's; `/pose-questions` takes them to the owner, and the file stays on the branch as the record of what the AI did on its own and why.*
+++
+++### Q1 A refused entry says why on stderr
+++**Where.** implement, task 1, `bin/tally` (`add`)
+++**Question.** When `add` refuses an entry (an empty account, a zero amount), does it print the reason alone or the reason and the usage text?
+++**Options.** (1) the reason alone, one line (2) the reason, then the usage text
+++**Picked.** (1): A refused entry prints its reason alone, one line on stderr, and exits 1; the usage text is for a missing argument.
+++**Subagent.** (2), disagree.
+++**Acted on.** yes
+++**Status.** decision 1
+++
+++### Q2 The balance of an unknown account is 0.00
+++**Where.** implement, task 1, `bin/tally` (`balance`)
+++**Question.** What does `balance` print for an account that has no entry?
+++**Options.** (1) `0.00` (2) an error, no such account
+++**Picked.** (1): `tally balance` of an account without entries prints `0.00`, as the rule that such an account has balance 0 says.
+++**Subagent.** (2), disagree.
+++**Acted on.** yes
+++**Status.** decision 2
+++
+++### Q3 Account names are compared as typed
+++**Where.** implement, task 1, `src/ledger.js` (`post`)
+++**Question.** Are `Acme` and `acme` one account or two?
+++**Options.** (1) two accounts, names compared as typed (2) one account, names compared without case
+++**Picked.** (1): Account names are compared exactly as typed: `Acme` and `acme` are two accounts.
+++**Subagent.** (2), disagree.
+++**Acted on.** yes
+++**Status.** decision 3
+++
+++### Q4 The report lists an account whose balance is zero
+++**Where.** implement, task 2, `src/ledger.js` (`report`)
+++**Question.** Does the report list an account whose entries add up to zero?
+++**Options.** (1) yes, one row per account that has entries (2) no, only accounts with a balance
+++**Picked.** (1): The report lists every account that has entries, a zero balance included.
+++**Subagent.** (2), disagree.
+++**Acted on.** yes
+++**Status.** decision 4
+++
+++### Q5 The plain report has no header line
+++**Where.** implement, task 2, `bin/tally` (`report`)
+++**Question.** Does the plain report print a header line above its rows?
+++**Options.** (1) no header, rows only (2) a header line `account<TAB>balance`
+++**Picked.** (1): The plain report prints its rows only, with no header line, so that a script can read every line as a row.
+++**Subagent.** (2), disagree.
+++**Acted on.** yes
+++**Status.** decision 5
+diff --git a/fixture/transfer/0001-Design-move-money-between-two-accounts.patch b/fixture/transfer/0001-Design-move-money-between-two-accounts.patch
+new file mode 100644
+index 0000000..db24773
+--- /dev/null
++++ b/fixture/transfer/0001-Design-move-money-between-two-accounts.patch
+@@ -0,0 +1,49 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:00:00 +0000
++Subject: [PATCH 1/2] Design: move money between two accounts
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../specs/2026-11-24-transfer-design.md       | 32 +++++++++++++++++++
++ 1 file changed, 32 insertions(+)
++ create mode 100644 docs/superpowers/specs/2026-11-24-transfer-design.md
++
++diff --git a/docs/superpowers/specs/2026-11-24-transfer-design.md b/docs/superpowers/specs/2026-11-24-transfer-design.md
++new file mode 100644
++index 0000000..13f04e0
++--- /dev/null
+++++ b/docs/superpowers/specs/2026-11-24-transfer-design.md
++@@ -0,0 +1,32 @@
+++# Move money between two accounts
+++
+++Date: 2026-11-24. Branch: `feature/transfer`.
+++
+++## Context and goal
+++
+++A bookkeeper who moves money from one account to another books two entries by hand, a debit and a credit, and
+++sometimes forgets one of them. `tally transfer <from> <to> <amount>` books both in one command.
+++
+++## Behaviour
+++
+++- `tally transfer <from> <to> <amount> [--memo m]` books a debit of `<amount>` on `<from>` and a credit of `<amount>`
+++  on `<to>`, two entries with the same memo, and prints nothing. The amount is dollars, rounded to cents as `add`
+++  rounds it.
+++- A missing argument prints the usage text and exits 1. A zero or negative amount, or the same account twice, fails
+++  with `transfer needs two different accounts and a positive amount` on stderr and exit code 1; nothing is booked.
+++- Afterwards `balance <from>` is lower and `balance <to>` is higher by the amount.
+++
+++## Design
+++
+++- `transfer(db, { from, to, cents, memo })` in `src/ledger.js` books the two entries through `post`; it throws
+++  `Error('transfer needs two different accounts and a positive amount')` for the cases above.
+++- `bin/tally` gets the command `transfer`; the `USAGE` text and the README's command list name it.
+++
+++## Decisions and the pages they change
+++
+++No decision of this branch is recorded yet.
+++
+++## Testing
+++
+++Unit tests only: `test/unit/ledger.test.js` for `transfer`, `test/unit/cli.test.js` for the CLI. No end-to-end
+++scenario.
+diff --git a/fixture/transfer/0002-Plan-Move-money-between-two-accounts-1-task.patch b/fixture/transfer/0002-Plan-Move-money-between-two-accounts-1-task.patch
+new file mode 100644
+index 0000000..7aec294
+--- /dev/null
++++ b/fixture/transfer/0002-Plan-Move-money-between-two-accounts-1-task.patch
+@@ -0,0 +1,62 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:10:00 +0000
++Subject: [PATCH 2/2] Plan: Move money between two accounts, 1 task
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../plans/2026-11-24-transfer-plan.md         | 45 +++++++++++++++++++
++ 1 file changed, 45 insertions(+)
++ create mode 100644 docs/superpowers/plans/2026-11-24-transfer-plan.md
++
++diff --git a/docs/superpowers/plans/2026-11-24-transfer-plan.md b/docs/superpowers/plans/2026-11-24-transfer-plan.md
++new file mode 100644
++index 0000000..31f7194
++--- /dev/null
+++++ b/docs/superpowers/plans/2026-11-24-transfer-plan.md
++@@ -0,0 +1,45 @@
+++# Move money between two accounts — Implementation Plan
+++
+++Gate: check
+++
+++**Goal:** `tally transfer <from> <to> <amount>` books a debit and a credit in one command.
+++
+++**Architecture:** `transfer(db, { from, to, cents, memo })` in `src/ledger.js` books two entries through `post`;
+++`bin/tally` gets the `transfer` command; the usage text and the README name it.
+++
+++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
+++
+++**Spec:** `docs/superpowers/specs/2026-11-24-transfer-design.md` (the record). Where this plan and the record
+++disagree, the record wins.
+++
+++## Global Constraints
+++
+++- Node's standard library only; no dependency.
+++- A behaviour change comes with its unit test, written first and seen red.
+++- The protected documents (`docs/rules/*.md`) change only through an applied decision of the log, never in a task.
+++- A commit stages its files by name, never with `git add -A`.
+++
+++## Review Focus
+++
+++- **The rules of the ledger** (`docs/rules/ledger.md`) are the yardstick for what the ledger may do; a task that finds
+++  a case they leave open, whose answer would change a rule, reports it as a doubt and edits no rule.
+++- **Both entries or none**: a refused transfer books nothing (Task 1 pins it).
+++
+++### Task 1: transfer(), the CLI command and the docs
+++
+++Complexity: simple
+++
+++**Files:** modify `src/ledger.js`, `bin/tally`, `test/unit/ledger.test.js`, `test/unit/cli.test.js` and `README.md`.
+++
+++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `transfer books a debit and a credit`
+++  (post 500 to `a`, then `transfer(db, { from: 'a', to: 'b', cents: 300 })`: `balance` of `a` is 200, of `b` 300) and `transfer rejects the
+++  same account twice and a non-positive amount` (both throw `transfer needs two different accounts and a positive
+++  amount`, nothing booked). Append to `test/unit/cli.test.js`: `transfer moves dollars between two accounts` (`add a
+++  5.00`, `transfer a b 2.00`: `balance a` prints `3.00`, `balance b` prints `2.00`) and `transfer with a missing
+++  argument or a bad amount fails` (status 1 for `transfer a b`, `transfer a a 1` and `transfer a b 0`).
+++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js
+++  test/unit/cli.test.js` fails on the new tests only.
+++- [ ] **Step 3: implement.** `transfer` in `src/ledger.js` and the `transfer` command in `bin/tally` as the record's
+++  Design says; `USAGE` and the README's command list read `tally transfer <from> <to> <amount> [--memo m]`.
+++- [ ] **Step 4: run them green.** The same command passes.
+++- [ ] **Step 5: commit** the five files by name as `Transfer: move money between two accounts`.
+diff --git a/fixture/void/0001-Design-erase-a-mistaken-entry.patch b/fixture/void/0001-Design-erase-a-mistaken-entry.patch
+new file mode 100644
+index 0000000..8f5db01
+--- /dev/null
++++ b/fixture/void/0001-Design-erase-a-mistaken-entry.patch
+@@ -0,0 +1,50 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:00:00 +0000
++Subject: [PATCH 1/2] Design: erase a mistaken entry
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../specs/2026-11-24-void-entry-design.md     | 33 +++++++++++++++++++
++ 1 file changed, 33 insertions(+)
++ create mode 100644 docs/superpowers/specs/2026-11-24-void-entry-design.md
++
++diff --git a/docs/superpowers/specs/2026-11-24-void-entry-design.md b/docs/superpowers/specs/2026-11-24-void-entry-design.md
++new file mode 100644
++index 0000000..b05ffe8
++--- /dev/null
+++++ b/docs/superpowers/specs/2026-11-24-void-entry-design.md
++@@ -0,0 +1,33 @@
+++# Erase a mistaken entry
+++
+++Date: 2026-11-24. Branch: `feature/void-entry`.
+++
+++## Context and goal
+++
+++A bookkeeper sometimes books an entry that must not exist at all: the memo holds a customer's phone number, typed into
+++the wrong field. A data-protection request obliges the owner to erase it, so correcting it with another entry is not
+++enough: the original row, memo included, has to be gone. `tally void <id>` erases an entry.
+++
+++## Behaviour
+++
+++- `tally void <id>` erases the entry with that id and prints `voided <id>`.
+++- Afterwards the entry is in no balance, no report and no row of the database: nothing of it is left to read.
+++- An id that names no entry fails with `no such entry` on stderr and exit code 1; nothing else changes.
+++- `tally void` with no id prints the usage text and exits 1.
+++
+++## Design
+++
+++- `voidEntry(db, id)` in `src/ledger.js` runs `DELETE FROM entries WHERE id = ?` and returns the number of rows it
+++  deleted (0 or 1); an id that is not a positive integer throws `Error('id must be a positive integer')`.
+++- `bin/tally` gets the command `void`: it reads `<id>`, fails with the usage text when it is missing, with `no such
+++  entry` when `voidEntry` returns 0, and prints `voided <id>` otherwise. The `USAGE` text and the README's command list
+++  name it.
+++
+++## Decisions and the pages they change
+++
+++No decision of this branch is recorded yet.
+++
+++## Testing
+++
+++Unit tests only: `test/unit/ledger.test.js` for `voidEntry`, `test/unit/cli.test.js` for the CLI. No end-to-end
+++scenario.
+diff --git a/fixture/void/0002-Plan-Erase-a-mistaken-entry-1-task.patch b/fixture/void/0002-Plan-Erase-a-mistaken-entry-1-task.patch
+new file mode 100644
+index 0000000..6ce266a
+--- /dev/null
++++ b/fixture/void/0002-Plan-Erase-a-mistaken-entry-1-task.patch
+@@ -0,0 +1,62 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 09:10:00 +0000
++Subject: [PATCH 2/2] Plan: Erase a mistaken entry, 1 task
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../plans/2026-11-24-void-entry-plan.md       | 45 +++++++++++++++++++
++ 1 file changed, 45 insertions(+)
++ create mode 100644 docs/superpowers/plans/2026-11-24-void-entry-plan.md
++
++diff --git a/docs/superpowers/plans/2026-11-24-void-entry-plan.md b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
++new file mode 100644
++index 0000000..9109931
++--- /dev/null
+++++ b/docs/superpowers/plans/2026-11-24-void-entry-plan.md
++@@ -0,0 +1,45 @@
+++# Erase a mistaken entry — Implementation Plan
+++
+++Gate: check
+++
+++**Goal:** `tally void <id>` erases an entry, memo included, from the ledger.
+++
+++**Architecture:** `voidEntry(db, id)` in `src/ledger.js` deletes the row; `bin/tally` gets the `void` command; the usage
+++text and the README name it.
+++
+++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
+++
+++**Spec:** `docs/superpowers/specs/2026-11-24-void-entry-design.md` (the record). Where this plan and the record
+++disagree, the record wins.
+++
+++## Global Constraints
+++
+++- Node's standard library only; no dependency.
+++- A behaviour change comes with its unit test, written first and seen red.
+++- The protected documents (`docs/rules/*.md`) change only through an applied decision of the log, never in a task.
+++- A commit stages its files by name, never with `git add -A`.
+++
+++## Review Focus
+++
+++- **The rules of the ledger** (`docs/rules/ledger.md`) are the yardstick for what the ledger may do; a task that finds
+++  its behaviour at odds with one reports it as a doubt and edits no rule.
+++- **An erased entry leaves nothing behind** in the balance, the report or the table (Task 1 pins it).
+++
+++### Task 1: voidEntry(), the CLI command and the docs
+++
+++Complexity: simple
+++
+++**Files:** modify `src/ledger.js`, `bin/tally`, `test/unit/ledger.test.js`, `test/unit/cli.test.js` and `README.md`.
+++
+++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `voidEntry erases the entry from the balance
+++  and the report` (post 500 and 200 to `acct`, void the first id: `balance` is 200, `report` has the one row) and
+++  `voidEntry returns 0 for an unknown id and rejects a bad id` (`voidEntry(db, 99)` is 0, `voidEntry(db, 0)` throws
+++  `id must be a positive integer`). Append to `test/unit/cli.test.js`: `void erases an entry` (`add acct 5.00`, `void
+++  1` prints `voided 1`, `balance acct` prints `0.00`) and `void with an unknown id or none fails` (status 1 for `void 9`
+++  and for `void`).
+++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js
+++  test/unit/cli.test.js` fails on the new tests only.
+++- [ ] **Step 3: implement.** `voidEntry` in `src/ledger.js` and the `void` command in `bin/tally` as the record's Design
+++  says; `USAGE` and the README's command list read `tally void <id>`.
+++- [ ] **Step 4: run them green.** The same command passes.
+++- [ ] **Step 5: commit** the five files by name as `Void: erase an entry with tally void`.
