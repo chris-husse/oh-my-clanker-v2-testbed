@@ -313,6 +313,16 @@ function notOk(tap) {
   return tap.split('\n').map((line) => /^not ok \d+ - (.*?)(?: # .*)?$/.exec(line)?.[1]).filter(Boolean);
 }
 
+// The names of the top-level failed (or passed) tests of a `node --test` run, in either of its default reporters: spec
+// (`✖ <name> (…)`, `✔ <name> (…)`; Node 23 on, or a terminal) or TAP (`not ok <n> - <name>`, `ok <n> - <name>`; Node 22
+// writing to a pipe, as the gates do in the e2e image).
+function testResults(out, failed) {
+  const spec = failed ? /^✖ (.*?)(?: \([\d.]+m?s\))?$/ : /^✔ (.*?)(?: \([\d.]+m?s\))?$/;
+  const tap = failed ? /^not ok \d+ - (.*?)(?: # .*)?$/ : /^ok \d+ - (.*?)(?: # .*)?$/;
+  return out.split('\n').map((line) => (spec.exec(line) ?? tap.exec(line))?.[1])
+    .filter((name) => name && name !== 'failing tests');
+}
+
 const RESULTS = (failure) => [
   'PASS 01-post-entry',
   'PASS 02-balance-sums',
@@ -586,15 +596,13 @@ test('scenario/gate-flake: flaky clock fails the first check run of a checkout a
   assert.ok(!existsSync(join(b.checkout, '.cache')), 'a fresh checkout has no .cache/');
   const first = b.gate('check');
   assert.equal(first.status, 1, 'the first run is red');
-  const failing = first.stdout.split('\n').filter((line) => line.startsWith('✖ ') && !line.startsWith('✖ failing tests'))
-    .map((line) => line.slice(2).replace(/ \(.*$/, ''));
-  assert.deepEqual([...new Set(failing)], ['flaky clock'], first.stdout);
+  assert.deepEqual([...new Set(testResults(first.stdout, true))], ['flaky clock'], first.stdout);
   assert.match(first.stdout, /the 20 ms timer overshot by \d+ ms \(tolerance 150 ms\)/);
   assert.ok(existsSync(join(b.checkout, '.cache/clock-warm')), 'the run left its marker in .cache/');
   assert.equal(git(b.checkout, 'status', '--porcelain'), '', 'the marker is ignored: the tree stays clean');
   const second = b.gate('check');
   assert.equal(second.status, 0, second.stdout + second.stderr);
-  assert.match(second.stdout, /✔ flaky clock/);
+  assert.ok(testResults(second.stdout, false).includes('flaky clock'), second.stdout);
   const e2e = b.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs');
   assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
 });
