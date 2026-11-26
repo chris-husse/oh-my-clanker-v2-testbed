@@ -298,8 +298,8 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
   }
 });
 
-// What an investigation's result is when its evidence runs out: a cause the code alone shows is a hypothesis
-// (UNRESOLVED), and a tally-local call that fails once the hold has ended is the hold ending (HOLD_ENDED)
+// What an investigation's result is when its evidence runs out: a code-only cause, by the project's evidence bar, is
+// UNRESOLVED, and a tally-local call that fails once the hold has ended is the hold ending (HOLD_ENDED)
 test('the notes say what a diagnosis needs and that a call failed by the end of the hold is HOLD_ENDED', () => {
   const read = (path) => readFileSync(join(root, '.omc-project', path), 'utf8').replace(/\s+/g, ' ');
   const local = read('hook/investigation/investigation-context.local.md');
@@ -331,7 +331,7 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
     'Only with a diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder\'s files',
     'The asymmetry is deliberate: no investigation was possible for a scenario not investigated, while an investigated one that ended `UNRESOLVED:` was examined and did not meet this project\'s evidence bar.',
     'No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation `UNRESOLVED:` or interrupted)',
-    'when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only cause: rerun `/verify` with that instruction"',
+    'when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only cause: rerun `/verify` with the line `Authorized: <scenario id>: fix from the code-only cause` in its context"',
     'and do not fix, not even a scenario not investigated',
   ]) {
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
@@ -339,6 +339,28 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
   assert.doesNotMatch(hold, /hypothes/i);
   assert.ok(hold.includes('Write this list as the block above shows it, even for one scenario: each heading on its own line, and under it each scenario on a line of its own (the `- ` line for an unresolved or interrupted one, the copied `FAIL` row of `summary.md` for one not investigated), never inside a sentence; prose about them goes elsewhere in the report.'),
     'the report list is a block of its own lines');
+});
+
+// The owner's word: a line of the caller's context authorizes the fix of one scenario from its code-only cause, and
+// the notes allow the session's own saved tool output, nothing else under .claude/projects
+test('the notes give the owner\'s authorization a channel and allow only the session\'s own saved tool output', () => {
+  const read = (path) => readFileSync(join(root, '.omc-project', path), 'utf8').replace(/\s+/g, ' ');
+  const hold = read('bin/verify.hold.md');
+  for (const text of [
+    '`UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, not fixed without the owner\'s word (step 4);',
+    'The caller\'s context (the free text after the terminal\'s labelled input lines) may carry a line `Authorized: <scenario id>: fix from the code-only cause`.',
+    'Such a line is the owner\'s word for that scenario alone',
+    'none of the no-fix rules of this step applies to it, "not even a scenario not investigated" included',
+    '"authorize the fix from the code-only cause: rerun `/verify` with the line `Authorized: <scenario id>: fix from the code-only cause` in its context"',
+    'and do not fix, not even a scenario not investigated, unless the owner\'s word (below) covers it',
+  ]) {
+    assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
+  }
+  assert.doesNotMatch(hold, /rerun `\/verify` with that instruction/);
+  assert.doesNotMatch(hold, /not completed, never fixed;/);
+  const own = 'The one file under `.claude/projects` you may read is the one Claude Code itself points you at for a long tool result of this session (`<session id>/tool-results/<name>`); nothing else there.';
+  assert.ok(hold.includes(own), 'verify.hold.md allows the session\'s own saved tool output only');
+  assert.ok(read('hook/investigation/investigation-context.local.md').includes(own), 'and so does the briefing');
 });
 
 test('just release passes a run dir with spaces as one argument', { skip: !onPath('just') && 'just is not on PATH' }, () => {

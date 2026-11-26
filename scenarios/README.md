@@ -165,7 +165,8 @@ instalment`) and expects `GET /balance/Fir-0729` to answer 1999; with the fault 
 1. Lint and the unit tests stay green: every total they read is exact in dollars (1050, 7, 25, 100, 120).
 2. Exactly one e2e scenario fails, `07-invoice-instalments`, the last one; its message is numbers only. The base
    scenarios' totals (1000, 7, 1050, 1075, 100, 600) are exact, so they pass.
-3. Nothing of the run shows the cause, though it implicates the read path by elimination. The held database holds exactly the two posted rows, 1999 cents in all;
+3. Nothing of the run shows the cause, though it implicates the read path by elimination. The held database holds
+   exactly the two posted rows, 1999 cents in all;
    `GET /state` answers 2 entries, 1 account, 1999 total cents, one cache miss and the last request as sent;
    `output.txt` and `state.json` are those of a correct server but the balance response, `1998`, which only restates
    the failure; `http_get /balance/Fir-0729` answers the same 1998. The dollar amount is never stored and never

@@ -43,8 +43,9 @@ The held scenario is the one whose `output.txt` has the line `database <TALLY_DB
 
 Up to 10 failing scenarios: investigate each in turn. More than 10: investigate the held scenario and a sample of 2 to 4
 more, taken from different scenario files: 3 to 5 `/investigate local` calls in all, one per scenario (a scenario only
-read from its files, without a call of its own, is not investigated). The rest are not investigated: your final report lists
-each of them on its own line, by its full scenario id and title (the Report section below shows the form).
+read from its files, without a call of its own, is not investigated). The rest are not investigated: your final
+report lists each of them on its own line, by its full scenario id and title (the Report section below shows the
+form).
 
 ## 3. Investigate, one scenario per call
 
@@ -67,7 +68,8 @@ The result starts with one label, or is a diagnosis:
 - a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation (the briefing says what
   makes one: this project fixes a held red only when the run's own evidence shows the cause, an unvalidated finding
   included; a code-only cause is not one);
-- `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, never fixed;
+- `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, not fixed without
+  the owner's word (step 4);
 - a result whose cause, by its own account, is a code-only cause (read from the code and not shown by the run's data:
   no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the
   label: not fixed without the owner's word, listed as unresolved with that cause;
@@ -97,14 +99,24 @@ investigation that returned a diagnosis is completed.
   diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from
   its folder's files, and the report says so. The asymmetry is deliberate: no investigation was possible for a
   scenario not investigated, while an investigated one that ended `UNRESOLVED:` was examined and did not meet this
-  project's evidence bar. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
-  and no reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and
-  the run's database.
+  project's evidence bar.
+  git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`, and no
+  reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and the
+  run's database. The one file under `.claude/projects` you may read is the one Claude Code itself points you at for
+  a long tool result of this session (`<session id>/tool-results/<name>`); nothing else there.
 - No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation
   `UNRESOLVED:` or interrupted): return `needs_user` listing the `UNRESOLVED:`, interrupted and not investigated
   scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the scenario artifacts are in
   `<run-dir>`", and, when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only
-  cause: rerun `/verify` with that instruction"; and do not fix, not even a scenario not investigated.
+  cause: rerun `/verify` with the line `Authorized: <scenario id>: fix from the code-only cause` in its context"; and
+  do not fix, not even a scenario not investigated, unless the owner's word (below) covers it.
+
+**The owner's word.** The caller's context (the free text after the terminal's labelled input lines) may carry a line
+`Authorized: <scenario id>: fix from the code-only cause`. Such a line is the owner's word for that scenario alone:
+when its investigation ends `UNRESOLVED:` with a code-only cause, or it was not investigated, fix it from the cause the
+code shows as from a diagnosis, in the normal fix loop; none of the no-fix rules of this step applies to it, "not even
+a scenario not investigated" included. The report names the line and says the fix was authorized. Every other scenario
+keeps the rules above, and the line changes nothing of the investigations, the release or their order.
 
 The report lists the failing scenarios not investigated, the `UNRESOLVED` ones and the interrupted ones. Never change
 code while the run is held.
@@ -113,8 +125,8 @@ code while the run is held.
 
 BLOCKED means a tooling or access failure, and it always ends without a fix: an `/investigate local` that cannot be run
 or returns `BLOCKED:`, an error from any `tally-local` call (one made once the investigation started, with
-`<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4), a missing run file or key, or `<run-dir>/harness.pid` gone
-before any investigation started.
+`<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4), a missing run file or key, or
+`<run-dir>/harness.pid` gone before any investigation started.
 
 Stop investigating at once, release the run (step 6), and return `needs_user` with the exact error text and the fix that
 matches the cause:

@@ -19,7 +19,8 @@ server and database; every other failing scenario of the run is investigated fro
 
 git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`, and no
 reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and the run's
-database.
+database. The one file under `.claude/projects` you may read is the one Claude Code itself points you at for a long tool
+result of this session (`<session id>/tool-results/<name>`); nothing else there.
 
 ## Required input, or refuse
 
