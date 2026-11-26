@@ -1,0 +1,52 @@
+diff --git a/src/amount.js b/src/amount.js
+new file mode 100644
+index 0000000..bc91ddc
+--- /dev/null
++++ b/src/amount.js
+@@ -0,0 +1,16 @@
++// Amounts as people write them: integer cents to en-US text ("-1,234.05") and back.
++
++const GROUPS = /\B(?=(\d{3})+(?!\d))/;
++
++export function formatCents(cents) {
++  const whole = (cents / 100) | 0;
++  const part = Math.abs(cents % 100);
++  const sign = whole < 0 ? '-' : '';
++  return `${sign}${String(Math.abs(whole)).replace(GROUPS, ',')}.${String(part).padEnd(2, '0')}`;
++}
++
++export function parseCents(text) {
++  const [whole, frac = '0'] = text.replace(',', '').split('.');
++  const sign = Math.sign(Number(whole) || 1);
++  return Number(whole) * 100 + sign * Number(frac.padEnd(2, '0'));
++}
+diff --git a/test/unit/amount.test.js b/test/unit/amount.test.js
+new file mode 100644
+index 0000000..28f98bb
+--- /dev/null
++++ b/test/unit/amount.test.js
+@@ -0,0 +1,24 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { formatCents, parseCents } from '../../src/amount.js';
++
++// Amounts of every size an account sees, from a fixed seed: the same samples on every run.
++function* samples(count, seed = 20260101) {
++  let state = seed;
++  const next = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
++  for (let i = 0; i < count; i += 1) {
++    const digits = 1 + Math.floor(next() * 13);
++    const cents = Math.floor(next() * 10 ** digits);
++    yield cents !== 0 && next() < 0.3 ? -cents : cents;
++  }
++}
++
++const enUS = (cents) => (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
++
++test('amounts format as en-US and parse back', () => {
++  for (const cents of samples(500)) {
++    const text = enUS(cents);
++    assert.equal(formatCents(cents), text, `formatCents(${cents})`);
++    assert.equal(parseCents(text), cents, `parseCents('${text}')`);
++  }
++});
