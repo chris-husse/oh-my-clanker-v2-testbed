@@ -803,7 +803,7 @@ test('scenario/audit-moved-base: a finished two-task branch, and a base commit t
     ['README.md', 'bin/tally', 'src/ledger.js', 'test/unit/cli.test.js', 'test/unit/ledger.test.js']);
 });
 
-test('scenario/decisions: two protected rule pages, an empty decision log, and three fixture branches as mailbox files', () => {
+test('scenario/decisions: two protected rule pages, an empty decision log, and four fixture branches as mailbox files', () => {
   const b = branchOf('scenario-decisions', 'scenario/decisions');
   const config = b.show('.omc-project/config.yaml');
   assert.match(config, /^  protected: \["docs\/rules\/\*\.md"\]/m);
@@ -815,38 +815,55 @@ test('scenario/decisions: two protected rule pages, an empty decision log, and t
   const reports = b.show('docs/rules/reports.md');
   assert.deepEqual([...ledger.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Entries', 'Balances']);
   assert.deepEqual([...reports.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Rows', 'Output']);
-  assert.match(ledger, /never changed or deleted/, 'the rule the void fixture runs into');
-  assert.match(ledger, /`tally add` of a negative amount larger than the balance books it/, 'a rule that says nothing of transfers');
+  assert.match(ledger, /never changed or deleted/, 'the rule the void fixtures run into');
   assert.match(b.show('docs/decision-log.md'), /Next: 1\*$/m, 'an empty log');
-  assert.deepEqual(['limit', 'transfer', 'void'].map((v) => mailbox(b, `fixture/${v}`).length), [3, 2, 2]);
+  assert.deepEqual(['agree', 'disagree', 'limit', 'void'].map((v) => mailbox(b, `fixture/${v}`).length), [3, 3, 3, 2]);
 
-  for (const [variant, subjects, stem] of [
-    ['void', ['Design: erase a mistaken entry', 'Plan: Erase a mistaken entry, 1 task'], '2026-11-24-void-entry'],
-    ['transfer', ['Design: move money between two accounts', 'Plan: Move money between two accounts, 1 task'],
-      '2026-11-24-transfer'],
-    ['limit', ['Design: erase a mistaken entry', 'Plan: Erase a mistaken entry, 1 task',
-      'Implement: the log and the question files before the check'], '2026-11-24-void-entry'],
+  const stem = '2026-11-24-void-entry';
+  const design = 'Design: erase a mistaken entry';
+  const plan = 'Plan: Erase a mistaken entry, 1 task';
+  const replays = {};
+  for (const [variant, subjects] of [
+    ['void', [design, plan]],
+    ['agree', [design, plan, 'Questions: the open doubt of task 1']],
+    ['disagree', [design, plan, 'Questions: the open doubt of task 1']],
+    ['limit', [design, plan, 'Implement: the log and the question files before the check']],
   ]) {
     const { work, subjects: got } = replay(b, `fixture/${variant}`, variant, { onBranch: true });
+    replays[variant] = work;
     assert.deepEqual(got, subjects, variant);
     const files = git(work, 'diff', '--name-only', 'main', 'HEAD').split('\n').sort();
     assert.deepEqual(files, [
-      ...(variant === 'limit' ? ['docs/decision-log.md', 'docs/reviews/2026-11-24-void-entry-1.md'] : []),
-      `docs/superpowers/plans/${stem}-plan.md`, `docs/superpowers/specs/${stem}-design.md`]);
-    const plan = readFileSync(join(work, `docs/superpowers/plans/${stem}-plan.md`), 'utf8');
-    assert.deepEqual([...plan.matchAll(/^### Task (\d+): /gm)].map((m) => m[1]), ['1']);
-    assert.equal([...plan.matchAll(/^Complexity: simple$/gm)].length, 1);
-    assert.equal([...plan.matchAll(/^\s*- \[ \]/gm)].length, 5);
-    assert.doesNotMatch(plan.replace(/^.*Co-Authored-By:.*$/gm, ''), /\b(?:sonnet|opus|haiku|fable)\b/i, 'complexity only');
-    assert.match(plan, /`docs\/rules\/ledger\.md`/, 'the plan names the rules as the yardstick');
+      ...(variant === 'limit' ? ['docs/decision-log.md'] : []),
+      ...(variant === 'void' ? [] : ['docs/reviews/2026-11-24-void-entry-1.md']),
+      `docs/superpowers/plans/${stem}-plan.md`, `docs/superpowers/specs/${stem}-design.md`].sort());
+    const planText = readFileSync(join(work, `docs/superpowers/plans/${stem}-plan.md`), 'utf8');
+    assert.deepEqual([...planText.matchAll(/^### Task (\d+): /gm)].map((m) => m[1]), ['1']);
+    assert.equal([...planText.matchAll(/^Complexity: simple$/gm)].length, 1);
+    assert.equal([...planText.matchAll(/^\s*- \[ \]/gm)].length, 5);
+    assert.doesNotMatch(planText.replace(/^.*Co-Authored-By:.*$/gm, ''), /\b(?:sonnet|opus|haiku|fable)\b/i, 'complexity only');
+    assert.match(planText, /`docs\/rules\/ledger\.md`/, 'the plan names the rules as the yardstick');
     const record = readFileSync(join(work, `docs/superpowers/specs/${stem}-design.md`), 'utf8');
     assert.match(record, /^## Decisions and the pages they change$/m);
     assert.doesNotMatch(record, /docs\/rules|never changed or deleted/, 'the record does not mention the rule it runs into');
     assert.equal(unitTests(work).status, 0, `${variant}: no code yet, the unit tests of main stay green`);
+    assert.equal(git(work, 'diff', '--name-only', 'main', 'HEAD', '--', 'docs/rules'), '', `${variant}: the rule pages are as on main`);
   }
 
-  // the limit fixture: five entries recorded `disagreed`, none applied, each with its question in the run's question file
-  const limit = replay(b, 'fixture/limit', 'limit-log', { onBranch: true }).work;
+  // agree and disagree: one open question of the run, picked answer (1), the independent answer already in the file
+  for (const [variant, subagent] of [['agree', '(1), agree.'], ['disagree', '(2), disagree.']]) {
+    const text = readFileSync(join(replays[variant], 'docs/reviews/2026-11-24-void-entry-1.md'), 'utf8');
+    assert.match(text, /^# Questions: feature\/void-entry run 1$/m);
+    assert.deepEqual([...text.matchAll(/^### (Q\d+) /gm)].map((m) => m[1]), ['Q1']);
+    assert.deepEqual([...text.matchAll(/^\*\*(Picked|Subagent|Acted on|Status)\.\*\* (.+)$/gm)].map((m) => `${m[1]}: ${m[2].slice(0, 4)}`),
+      ['Picked: (1):', `Subagent: ${subagent.slice(0, 4)}`, 'Acted on: no', 'Status: open']);
+    assert.ok(text.includes(`**Subagent.** ${subagent}`));
+    assert.equal(git(replays[variant], 'ls-files', 'docs/decision-log.md'), 'docs/decision-log.md');
+    assert.match(readFileSync(join(replays[variant], 'docs/decision-log.md'), 'utf8'), /Next: 1\*$/m, 'the log stays empty');
+  }
+
+  // limit: five entries recorded `disagreed`, none applied, each with its decided question, and a sixth question open
+  const limit = replays.limit;
   const log = readFileSync(join(limit, 'docs/decision-log.md'), 'utf8');
   assert.match(log, /Next: 6\*$/m);
   assert.deepEqual([...log.matchAll(/^### (\d+) /gm)].map((m) => m[1]), ['1', '2', '3', '4', '5']);
@@ -855,9 +872,9 @@ test('scenario/decisions: two protected rule pages, an empty decision log, and t
   const questions = readFileSync(join(limit, 'docs/reviews/2026-11-24-void-entry-1.md'), 'utf8');
   assert.match(questions, /^# Questions: feature\/void-entry run 1$/m);
   assert.deepEqual([...questions.matchAll(/^\*\*Status\.\*\* (.+)$/gm)].map((m) => m[1]),
-    ['decision 1', 'decision 2', 'decision 3', 'decision 4', 'decision 5']);
-  assert.equal([...questions.matchAll(/^\*\*Subagent\.\*\* \(2\), disagree\.$/gm)].length, 5);
-  assert.equal(git(limit, 'diff', '--name-only', 'main', 'HEAD', '--', 'docs/rules'), '', 'the rule pages are as on main');
+    ['decision 1', 'decision 2', 'decision 3', 'decision 4', 'decision 5', 'open']);
+  assert.equal([...questions.matchAll(/^\*\*Subagent\.\*\* \(2\), disagree\.$/gm)].length, 6);
+  assert.match(questions, /### Q6 May tally void delete an entry\n/);
 });
 
 test('an unknown id exits non-zero with a message and creates nothing', () => {

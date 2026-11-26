@@ -23,7 +23,7 @@ suite to clone. The generator reads the patches from the committed `main`, so co
 | `scenario-agents-conflict` | `scenario/agents-conflict` | a root `AGENTS.md` and `CLAUDE.md` ("Always answer in French", "End every answer with the word BONJOUR"), and the overlay's `AGENTS.md` with the rule "End every answer with the token ZEBRA-TOKEN" (the e2e scenario replaces `ZEBRA-TOKEN` with a token of its own run); which instructions an agent follows tells whether the omc2 global section applied |
 | `scenario-with-plan` | `scenario/with-plan` | a design record and a two-task plan for `tally report --sort cents`, as two `git am` mailbox files under `fixture/branch/` (the scenario replays them on a feature branch, so the branch is `/implement`'s input: record and plan committed, no code) |
 | `scenario-audit-moved-base` | `scenario/audit-moved-base` | the finished feature of `scenario-with-plan` as five mailbox files under `fixture/branch/` (record, plan, two task commits, the plan's ticks) and the base's own next commit, `report --limit <n>`, under `fixture/base/`: it conflicts with the squashed feature in five files (`README.md`, `bin/tally`, `src/ledger.js` and both unit test files) |
-| `scenario-decisions` | `scenario/decisions` | the project keeps a decision log (`paths.decision_log: docs/decision-log.md`, empty) and protects two rule pages (`paths.protected: ["docs/rules/*.md"]`: `docs/rules/ledger.md`, `docs/rules/reports.md`); three feature branches as mailbox files under `fixture/void/`, `fixture/transfer/` and `fixture/limit/` (record and plan of a one-task feature each, `limit` with five `disagreed` entries already in the log, see below) |
+| `scenario-decisions` | `scenario/decisions` | the project keeps a decision log (`paths.decision_log: docs/decision-log.md`, empty) and protects two rule pages (`paths.protected: ["docs/rules/*.md"]`: `docs/rules/ledger.md`, `docs/rules/reports.md`); four feature branches as mailbox files under `fixture/void/`, `fixture/agree/`, `fixture/disagree/` and `fixture/limit/` (record and plan of a one-task feature that meets a doubt, with the open question of the run's answer pair and, for `limit`, five `disagreed` entries already in the log; see below) |
 
 Names: `fault-<rest>` becomes `fault/<rest>`, any other id `scenario/<id without the scenario- prefix>`.
 
@@ -242,28 +242,30 @@ files with `git format-patch --zero-commit --no-signature main..<branch>`, repla
 the record and plan form, the finished branch's unit tests and e2e run green, the base commit's too, and the squashed
 rebase's conflict list.
 
-## `scenario-decisions`: protected rule pages and three branches that meet a doubt
+## `scenario-decisions`: protected rule pages and four branches that meet a doubt
 
 The scenario's rulings (record, apply, defer, the integrity check on a hand edit) run on the plain branch: the log is
-empty and the two rule pages are the protected documents. The three fixture folders are feature branches for
-`/implement`, each a design record and a one-task plan (`Gate: check`, `Complexity: simple`); the container removes
-`fixture/` from `main` and replays one folder with `git am`.
+empty and the two rule pages are the protected documents. The four fixture folders are feature branches for
+`/implement`, each a design record and a one-task plan (`Gate: check`, `Complexity: simple`) for `tally void <id>`, which
+erases an entry, memo included, because of a data-protection request; `docs/rules/ledger.md` says "An entry is never
+changed or deleted once booked; a mistake is corrected by a reversing entry", and the record does not mention it. The
+task terminal meets that conflict and returns it as a design doubt for `/answer-doubt`. The container removes `fixture/`
+from `main` and replays one folder with `git am`.
 
-The doubt is the same kind in all three: the task terminal, building the plan's one task, meets a case whose answer would
-change a rule page, and returns it as a design doubt for `/answer-doubt`. What the run's two answers do depends on what
-each of them can read. The independent agent reads the docs only (the rule pages, `AGENTS.md`, the log); the main
-session also holds the record and the plan.
+What the run's two answers do depends on the model that answers, so three folders hold the answers in the file the skill
+reads: an earlier part of the run left the question open in the run's question file with its picked answer and the
+independent agent's (`/answer-doubt` step 3: a doubt that asks the same takes that question's `Picked` and `Subagent`,
+no second question, no second agent).
 
-- `fixture/transfer/`: `tally transfer <from> <to> <amount>`. Both the record and the rules are silent on a transfer
-  larger than the balance of `<from>` (the rule says only that `tally add` books a negative amount larger than the
-  balance), so both answers read the same material.
-- `fixture/void/`: `tally void <id>` erases an entry, memo included, because of a data-protection request. The record
-  says so; `docs/rules/ledger.md` says "An entry is never changed or deleted once booked; a mistake is corrected by a
-  reversing entry". The record does not mention the rule. The main session sees an owner's requirement that the rule
-  does not allow; the independent agent sees the rule alone.
-- `fixture/limit/`: the `void` branch and a log that already holds five entries recorded `disagreed` (decisions 1 to 5,
-  the questions Q1 to Q5 of `docs/reviews/2026-11-24-void-entry-1.md`, none ruled, none applied), as an earlier part of
-  the same run would have left them. A sixth disagreement stops the run.
+- `fixture/void/`: record and plan only. The doubt goes through the whole of `/answer-doubt`, the independent agent
+  included; the scenario asserts what holds whichever way the pair comes out.
+- `fixture/agree/`: record, plan and `docs/reviews/2026-11-24-void-entry-1.md` with the open question Q1, `Picked (1)`,
+  `Subagent (1), agree.`: the doubt is ruled by their agreement (an entry `Automated: true`).
+- `fixture/disagree/`: the same file with `Subagent (2), disagree.`: the run acts on its pick and records the entry
+  `disagreed`.
+- `fixture/limit/`: record, plan, a log that already holds five entries recorded `disagreed` (decisions 1 to 5, the
+  decided questions Q1 to Q5 of the same question file, none ruled, none applied) and the open question Q6 with
+  `Subagent (2), disagree.`: a sixth disagreement stops the run.
 
 The five entries were written by `just decisions add-decision --disagreed` in a container with omc installed, their dates
 set to 2026-11-24; the mailbox files hold docs only (no `omc/`).
