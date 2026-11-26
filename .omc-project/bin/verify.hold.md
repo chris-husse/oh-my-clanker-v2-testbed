@@ -89,14 +89,15 @@ After the release (the time limit reached, or every scenario you chose investiga
 investigation that returned a diagnosis is completed.
 
 - At least one diagnosis: continue with the normal fix loop from the diagnoses (the released run's server is gone).
-  `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are never fixed from the logs. Only a scenario NOT
-  investigated (more than 10, or past the 1200-second start limit) may be fixed from its folder's files, and the report
-  says so. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
+  `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are never fixed from the logs. Only with a diagnosis, a
+  scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder's
+  files, and the report says so. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
   and no reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and
   the run's database.
-- No diagnosis (none completed, or every investigation `UNRESOLVED:` or interrupted): return `needs_user` listing the
-  `UNRESOLVED:` and interrupted scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the
-  scenario artifacts are in `<run-dir>`", and do not fix.
+- No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation
+  `UNRESOLVED:` or interrupted): return `needs_user` listing the `UNRESOLVED:`, interrupted and not investigated
+  scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the scenario artifacts are in
+  `<run-dir>`", and do not fix, not even a scenario not investigated.
 
 The report lists the failing scenarios not investigated, the `UNRESOLVED` ones and the interrupted ones. Never change
 code while the run is held.

@@ -309,6 +309,9 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
     'the result is `UNRESOLVED: <what is unknown>`, with the hypothesis and its file and line; never a diagnosis',
     'One exception, the end of the hold: a `tally-local` call that fails once the investigation has started, with `<run-dir>/harness.pid` gone, failed because the hold ended',
     'the result is `HOLD_ENDED: <what was gathered so far>`, not `BLOCKED:`',
+    'including one whose only cause is read from the code (no row, response, `/state` field or file line but the failing value is wrong: see the Lead)',
+    'the rows, responses, `/state` fields or file lines that are themselves wrong and show it',
+    'a cause only the code shows is `UNRESOLVED:`',
   ]) {
     assert.ok(local.includes(text), `investigation-context.local.md says ${text}`);
   }
@@ -316,6 +319,9 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
   for (const text of [
     'only a diagnosis counts as a completed investigation (the briefing says what makes one: a cause the run\'s evidence shows, never one read from the code alone)',
     'an error from any `tally-local` call (one made once the investigation started, with `<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4)',
+    'Only with a diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder\'s files',
+    'No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation `UNRESOLVED:` or interrupted)',
+    'and do not fix, not even a scenario not investigated',
   ]) {
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
   }

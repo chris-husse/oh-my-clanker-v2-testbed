@@ -133,8 +133,10 @@ file (the hold guard below); when it is gone, the result is `HOLD_ENDED: <what w
 
 The two non-blocked results, each starting the result with its label:
 
-- `UNRESOLVED: <what is unknown>`: a dead end or an inconclusive scenario whose reads and queries ran, followed by
-  every quote gathered and what was ruled out; never the label of a tooling or access failure;
+- `UNRESOLVED: <what is unknown>`: a dead end or an inconclusive scenario whose reads and queries ran, including one
+  whose only cause is read from the code (no row, response, `/state` field or file line but the failing value is
+  wrong: see the Lead), followed by every quote gathered, the hypothesis with its file and line, and what was ruled
+  out; never the label of a tooling or access failure;
 - `HOLD_ENDED: <what was gathered>`: the hold ended while the investigation ran (the hold guard below), followed by
   the quotes gathered so far.
 
@@ -206,8 +208,9 @@ The result states, in this order:
 1. The values used, quoted from the files: `TALLY_DATABASE`, `TALLY_DB_PATH`, `TALLY_PORT`, whether the scenario is
    the held one, and `server_info` `database.user`.
 2. Each `tally-local` call made: tool, `database` or `port`, `sql` or `path`; one line each.
-3. The finding: the cause, with the quoted lines, rows or responses that showed it and the file or call that returned
-   them, and the file and function under `src/` where the cause lies when the code shows it.
+3. The finding: the cause, with the rows, responses, `/state` fields or file lines that are themselves wrong and show
+   it, quoted, and the file or call that returned them, and the file and function under `src/` that explains them (a
+   cause only the code shows is `UNRESOLVED:`, item 4).
 4. For a result that is not a diagnosis, the first line of the whole result instead, one label only:
    `BLOCKED: <cause>` with the exact error (tooling or access), `UNRESOLVED: <what is unknown>` with the quotes
    gathered (dead end), or `HOLD_ENDED: <what was gathered>` (the hold ended mid-investigation).
