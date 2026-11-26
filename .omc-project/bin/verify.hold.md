@@ -179,6 +179,7 @@ order:
    For the scenarios not investigated, copy each one's `FAIL` row of `summary.md` into the report as it stands, every
    row, however many: a summary of them in words or numbers does not list them. A heading with nothing under it is
    left out. Write this list as the block above shows it, even for one scenario: each heading on its own line, and
-   under it each scenario on a line of its own (the `- ` line, or the copied row starting the line), never inside a
-   sentence; prose about them goes elsewhere in the report.
+   under it each scenario on a line of its own (the `- ` line for an unresolved or interrupted one, the copied `FAIL`
+   row of `summary.md` for one not investigated), never inside a sentence; prose about them goes elsewhere in the
+   report.
 3. The `just release` output (`RELEASED`) and the port check result.

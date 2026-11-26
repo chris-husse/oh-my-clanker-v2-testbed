@@ -337,7 +337,7 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
   }
   assert.doesNotMatch(hold, /hypothes/i);
-  assert.ok(hold.includes('Write this list as the block above shows it, even for one scenario: each heading on its own line, and under it each scenario on a line of its own (the `- ` line, or the copied row starting the line), never inside a sentence; prose about them goes elsewhere in the report.'),
+  assert.ok(hold.includes('Write this list as the block above shows it, even for one scenario: each heading on its own line, and under it each scenario on a line of its own (the `- ` line for an unresolved or interrupted one, the copied `FAIL` row of `summary.md` for one not investigated), never inside a sentence; prose about them goes elsewhere in the report.'),
     'the report list is a block of its own lines');
 });
 
