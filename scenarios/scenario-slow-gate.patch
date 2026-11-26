@@ -11,7 +11,7 @@ index ef93962..38fd545 100755
 +# naming it. Pass or fail is the exit code.
 +#
 +# TALLY_BUILD_WARMUP (seconds, default 100) and TALLY_BUILD_BEAT (seconds between progress lines, default 10) size the
-+# warm-up for the testbed's own tests.
++# warm-up.
  set -euo pipefail
  cd "$(dirname "$0")/../.."
 +

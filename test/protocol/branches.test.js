@@ -641,7 +641,8 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
-    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario',
+    'testbed'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
     'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence', 'fault/unit-red', 'scenario/gate-flake',
     'scenario/slow-gate']) {
