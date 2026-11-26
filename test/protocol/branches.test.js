@@ -320,7 +320,7 @@ function testResults(out, failed) {
   const spec = failed ? /^✖ (.*?)(?: \([\d.]+m?s\))?$/ : /^✔ (.*?)(?: \([\d.]+m?s\))?$/;
   const tap = failed ? /^not ok \d+ - (.*?)(?: # .*)?$/ : /^ok \d+ - (.*?)(?: # .*)?$/;
   return out.split('\n').map((line) => (spec.exec(line) ?? tap.exec(line))?.[1])
-    .filter((name) => name && name !== 'failing tests');
+    .filter((name) => name && !/^failing tests:?$/.test(name));
 }
 
 const RESULTS = (failure) => [
