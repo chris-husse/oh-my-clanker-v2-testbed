@@ -267,5 +267,11 @@ no second question, no second agent).
   decided questions Q1 to Q5 of the same question file, none ruled, none applied) and the open question Q6 with
   `Subagent (2), disagree.`: a sixth disagreement stops the run.
 
+Not proven by these branches: that the skill compares the independent agent's answer with its own pick is proven through
+`fixture/void/` alone (the end-to-end test checks the recorded verdict against the question's `Picked` option and the option
+of the agent's own `Choice:`); `agree`, `disagree` and `limit` have the pair written in the file, so they prove the recording,
+the merge and the apply; `limit` is five seeded entries plus one doubt, so it proves the stop and the question to the owner,
+not that a sixth disagreement would arise from a live pair.
+
 The five entries were written by `just decisions add-decision --disagreed` in a container with omc installed, their dates
 set to 2026-11-24; the mailbox files hold docs only (no `omc/`).
