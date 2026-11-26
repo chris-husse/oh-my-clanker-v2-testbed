@@ -106,12 +106,14 @@ named in its requests and responses. Every claim quotes its source: the file and
 call (tool, `database` or `port`, `sql` or `path`) that returned the rows or response. A claim with no quote is a
 guess; leave it out or say it is unknown.
 
-A diagnosis is a cause the run's evidence shows: a row, a response, a `/state` field or a line of the run's files that
+This project's chosen evidence bar for a held red: it fixes one only when the run's own evidence shows the cause. A
+diagnosis is a cause the run's evidence shows: a row, a response, a `/state` field or a line of the run's files that
 is itself wrong, not only the failing value restated, quoted together with the code under `src/` that explains it.
-When the rows, `/state`, the files and every response are what a correct run would leave, apart from the failing value
-itself, the evidence does not show where the run went wrong: a cause read from the code alone, however likely, is a
-hypothesis (a run of that code reproducing the failing value is no evidence of what happened either). Then the result
-is `UNRESOLVED: <what is unknown>`, with the hypothesis and its file and line; never a diagnosis.
+An unvalidated finding (one `/explain` did not validate, below) whose cause that evidence shows is a diagnosis all the
+same. When the rows, `/state`, the files and every response are what a correct run would leave, apart from the
+failing value itself, what the code points to is a code-only cause, however likely, and even when a run of that code
+reproduces the failing value: by this project's choice it is not a diagnosis. The result is then
+`UNRESOLVED: <what is unknown>`, with the code-only cause and its file and line; a fix from it needs the owner's word.
 
 ## When `tally-local` fails, stop
 
@@ -134,9 +136,9 @@ file (the hold guard below); when it is gone, the result is `HOLD_ENDED: <what w
 The two non-blocked results, each starting the result with its label:
 
 - `UNRESOLVED: <what is unknown>`: a dead end or an inconclusive scenario whose reads and queries ran, including one
-  whose only cause is read from the code (no row, response, `/state` field or file line but the failing value is
-  wrong: see the Lead), followed by every quote gathered, the hypothesis with its file and line, and what was ruled
-  out; never the label of a tooling or access failure;
+  with a code-only cause (no row, response, `/state` field or file line but the failing value is wrong: see the
+  Lead), followed by every quote gathered, the code-only cause with its file and line, and what was ruled out; never
+  the label of a tooling or access failure;
 - `HOLD_ENDED: <what was gathered>`: the hold ended while the investigation ran (the hold guard below), followed by
   the quotes gathered so far.
 
@@ -185,11 +187,14 @@ as blocked ends the investigation with a result instead:
 
 The skill's other pause rows map the same way: with "two plausible next directions" follow the lead's direction (the
 failed scenario's own `FAIL` line and the requests before it), and when no direction is predictable, or the result of a
-next query that would run fine cannot be predicted, end `UNRESOLVED:`. A failing call is never that: it is `BLOCKED:`.
+next query that would run fine cannot be predicted, end `UNRESOLVED:`. A failing call is never that: it is `BLOCKED:`,
+or `HOLD_ENDED:` when it failed once the investigation had started with `<run-dir>/harness.pid` gone (the exception
+above).
 
 Skip the `/explain` pre-flight. Run `/explain` inline on a load-bearing finding (one whose weight rests on how the code
 behaves) only when the question and its answer fit the hold guard's time budget. A finding `/explain` did not validate
-is reported as a hypothesis, said so in the result, not as a cause.
+is an unvalidated finding, and the result says so. When the run's evidence shows its cause, it is still a diagnosis
+(the Lead); when only the code shows the cause, it is a code-only cause: `UNRESOLVED:`.
 
 ## Env-lock echo (local shape)
 

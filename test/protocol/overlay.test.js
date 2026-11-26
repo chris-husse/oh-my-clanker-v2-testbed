@@ -304,28 +304,39 @@ test('the notes say what a diagnosis needs and that a call failed by the end of 
   const read = (path) => readFileSync(join(root, '.omc-project', path), 'utf8').replace(/\s+/g, ' ');
   const local = read('hook/investigation/investigation-context.local.md');
   for (const text of [
+    'This project\'s chosen evidence bar for a held red: it fixes one only when the run\'s own evidence shows the cause.',
     'A diagnosis is a cause the run\'s evidence shows: a row, a response, a `/state` field or a line of the run\'s files that is itself wrong, not only the failing value restated',
-    'a cause read from the code alone, however likely, is a hypothesis',
-    'the result is `UNRESOLVED: <what is unknown>`, with the hypothesis and its file and line; never a diagnosis',
+    'An unvalidated finding (one `/explain` did not validate, below) whose cause that evidence shows is a diagnosis all the same.',
+    'what the code points to is a code-only cause, however likely, and even when a run of that code reproduces the failing value: by this project\'s choice it is not a diagnosis',
+    'with the code-only cause and its file and line; a fix from it needs the owner\'s word',
+    'including one with a code-only cause (no row, response, `/state` field or file line but the failing value is wrong: see the Lead)',
+    'A finding `/explain` did not validate is an unvalidated finding, and the result says so. When the run\'s evidence shows its cause, it is still a diagnosis (the Lead); when only the code shows the cause, it is a code-only cause: `UNRESOLVED:`.',
+    'A failing call is never that: it is `BLOCKED:`, or `HOLD_ENDED:` when it failed once the investigation had started with `<run-dir>/harness.pid` gone (the exception above).',
     'One exception, the end of the hold: a `tally-local` call that fails once the investigation has started, with `<run-dir>/harness.pid` gone, failed because the hold ended',
     'the result is `HOLD_ENDED: <what was gathered so far>`, not `BLOCKED:`',
-    'including one whose only cause is read from the code (no row, response, `/state` field or file line but the failing value is wrong: see the Lead)',
     'the rows, responses, `/state` fields or file lines that are themselves wrong and show it',
     'a cause only the code shows is `UNRESOLVED:`',
   ]) {
     assert.ok(local.includes(text), `investigation-context.local.md says ${text}`);
   }
+  // one meaning of "hypothesis" at most: none is left, the two are "unvalidated finding" and "code-only cause"
+  assert.doesNotMatch(local, /hypothes/i);
+  assert.doesNotMatch(local, /does not show where the run went wrong|no evidence of what happened/);
   const hold = read('bin/verify.hold.md');
   for (const text of [
-    'only a diagnosis counts as a completed investigation (the briefing says what makes one: a cause the run\'s evidence shows, never one read from the code alone)',
+    'only a diagnosis counts as a completed investigation (the briefing says what makes one: this project fixes a held red only when the run\'s own evidence shows the cause, an unvalidated finding included; a code-only cause is not one)',
     'an error from any `tally-local` call (one made once the investigation started, with `<run-dir>/harness.pid` gone, is the hold ending: `HOLD_ENDED:`, step 4)',
+    'a result whose cause, by its own account, is a code-only cause (read from the code and not shown by the run\'s data: no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the label: not fixed without the owner\'s word',
+    '`UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are not fixed: they need the owner\'s decision.',
     'Only with a diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder\'s files',
+    'The asymmetry is deliberate: no investigation was possible for a scenario not investigated, while an investigated one that ended `UNRESOLVED:` was examined and did not meet this project\'s evidence bar.',
     'No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation `UNRESOLVED:` or interrupted)',
+    'when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only cause: rerun `/verify` with that instruction"',
     'and do not fix, not even a scenario not investigated',
-    'a result whose cause, by its own account, is read from the code and not shown by the run\'s data (no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the label: never fixed',
   ]) {
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
   }
+  assert.doesNotMatch(hold, /hypothes/i);
 });
 
 test('just release passes a run dir with spaces as one argument', { skip: !onPath('just') && 'just is not on PATH' }, () => {

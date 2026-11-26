@@ -460,7 +460,8 @@ test('fault/many-red: lint and unit green, twelve e2e scenarios red with numbers
 
 // No live trace (scenarios/README.md): balance() sums the cents, divides by 100.0 and truncates the product with 100
 // back to cents, so a total whose dollar amount is not exact in floating point (19.99) loses a cent. The stored
-// rows, /state, the run's files and every response are what a correct server gives, but the one balance number.
+// rows, /state, the run's files and every response are what a correct server gives, but the one balance number: none
+// shows the cause, though the rows and /state's total (1999) against /balance (1998) implicate the read path.
 const NO_EVIDENCE = 'tally_07_invoice_instalments';
 const NO_EVIDENCE_ROWS = [[1, 'Fir-0729', 1500, 'invoice 0729, first instalment'],
   [2, 'Fir-0729', 499, 'invoice 0729, second instalment']];

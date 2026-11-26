@@ -65,11 +65,12 @@ Run `/investigate local <prompt>`, one scenario per call. The prompt names:
 The result starts with one label, or is a diagnosis:
 
 - a diagnosis: quote it in the report; only a diagnosis counts as a completed investigation (the briefing says what
-  makes one: a cause the run's evidence shows, never one read from the code alone);
+  makes one: this project fixes a held red only when the run's own evidence shows the cause, an unvalidated finding
+  included; a code-only cause is not one);
 - `UNRESOLVED: <what is unknown>`: a dead end with its quotes, listed in the report; not completed, never fixed;
-- a result whose cause, by its own account, is read from the code and not shown by the run's data (no row, response,
-  `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the label: never
-  fixed, listed as unresolved with that cause as its hypothesis;
+- a result whose cause, by its own account, is a code-only cause (read from the code and not shown by the run's data:
+  no row, response, `/state` field or file line but the failing value is wrong) is `UNRESOLVED:`, with or without the
+  label: not fixed without the owner's word, listed as unresolved with that cause;
 - `HOLD_ENDED: <what was gathered>`: the hold ended during the investigation; interrupted, not completed, never fixed:
   step 4;
 - `BLOCKED: <cause>`: a tooling or access failure, a missing lead or missing input: step 5.
@@ -92,15 +93,18 @@ After the release (the time limit reached, or every scenario you chose investiga
 investigation that returned a diagnosis is completed.
 
 - At least one diagnosis: continue with the normal fix loop from the diagnoses (the released run's server is gone).
-  `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are never fixed from the logs. Only with a diagnosis, a
-  scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from its folder's
-  files, and the report says so. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
+  `UNRESOLVED:` and interrupted (`HOLD_ENDED:`) scenarios are not fixed: they need the owner's decision. Only with a
+  diagnosis, a scenario NOT investigated (more than 10, or past the 1200-second start limit) may also be fixed from
+  its folder's files, and the report says so. The asymmetry is deliberate: no investigation was possible for a
+  scenario not investigated, while an investigated one that ended `UNRESOLVED:` was examined and did not meet this
+  project's evidence bar. git history and diffs are not evidence: no `git log`, `git diff`, `git show`, `git blame`, `git reflog`,
   and no reading of session logs (`.claude/projects`, `*.jsonl`); the evidence is the run dir, the held service and
   the run's database.
 - No diagnosis (none started, as when the time limit came before the first; none completed; or every investigation
   `UNRESOLVED:` or interrupted): return `needs_user` listing the `UNRESOLVED:`, interrupted and not investigated
   scenarios, with the fix "rerun `/verify`" or "give the fixer more evidence: the scenario artifacts are in
-  `<run-dir>`", and do not fix, not even a scenario not investigated.
+  `<run-dir>`", and, when an `UNRESOLVED:` result names a code-only cause, "authorize the fix from the code-only
+  cause: rerun `/verify` with that instruction"; and do not fix, not even a scenario not investigated.
 
 The report lists the failing scenarios not investigated, the `UNRESOLVED` ones and the interrupted ones. Never change
 code while the run is held.
