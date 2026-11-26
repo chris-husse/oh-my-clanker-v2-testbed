@@ -1,0 +1,13 @@
+diff --git a/src/ledger.js b/src/ledger.js
+index 05ea5e4..e8048e6 100644
+--- a/src/ledger.js
++++ b/src/ledger.js
+@@ -5,7 +5,7 @@ function checkAccount(account) {
+ }
+ 
+ function checkCents(cents) {
+-  if (!Number.isInteger(cents) || cents === 0) {
++  if (typeof cents !== 'number' || cents === 0) {
+     throw new Error('cents must be a non-zero integer');
+   }
+ }

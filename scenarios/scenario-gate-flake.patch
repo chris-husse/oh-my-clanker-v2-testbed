@@ -1,0 +1,44 @@
+diff --git a/.omc-project/bin/check.md b/.omc-project/bin/check.md
+new file mode 100644
+index 0000000..4f0f826
+--- /dev/null
++++ b/.omc-project/bin/check.md
+@@ -0,0 +1,10 @@
++# check: notes on its reds
++
++- **The steps, in order**: every source file parses (`node --check` over `src/**/*.js`, `bin/tally`, `scripts/*.mjs`,
++  `mcp/*.mjs`), then the unit tests (`node --test 'test/unit/*.test.js'`). A file that does not parse stops the gate
++  before the tests.
++- **`flaky clock`** (`test/unit/clock.test.js`) is a known flaky test: it fails on the first run in a fresh worktree
++  (a cold start: `the 20 ms timer overshot by … ms`) and passes on every run after it. Rerun, do not fix: a red of
++  `flaky clock` is handled by running the gate again, with no edit of the test or of the code under it. Red on two
++  runs in a row, it is a real failure: fix it then.
++- **Any other red unit test** is a real failure: fix the code under test, never the test.
+diff --git a/test/unit/clock.test.js b/test/unit/clock.test.js
+new file mode 100644
+index 0000000..f3e760b
+--- /dev/null
++++ b/test/unit/clock.test.js
+@@ -0,0 +1,22 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
++import { setTimeout as sleep } from 'node:timers/promises';
++import { fileURLToPath } from 'node:url';
++
++// A 20 ms timer measured against the wall clock, within 150 ms. The first run in a checkout is a cold start (.cache/
++// empty, nothing warmed up yet): its first timer fires late, past the tolerance; every later run is warm.
++const cache = fileURLToPath(new URL('../../.cache/', import.meta.url));
++const warmMarker = `${cache}clock-warm`;
++const TOLERANCE_MS = 150;
++
++test('flaky clock', async () => {
++  const cold = !existsSync(warmMarker);
++  mkdirSync(cache, { recursive: true });
++  writeFileSync(warmMarker, `${new Date().toISOString()}\n`);
++  const start = performance.now();
++  if (cold) await sleep(300);
++  await sleep(20);
++  const overshoot = performance.now() - start - 20;
++  assert.ok(overshoot <= TOLERANCE_MS, `the 20 ms timer overshot by ${overshoot.toFixed(0)} ms (tolerance ${TOLERANCE_MS} ms)`);
++});

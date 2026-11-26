@@ -1,0 +1,27 @@
+diff --git a/.omc-project/bin/build b/.omc-project/bin/build
+index ef93962..38fd545 100755
+--- a/.omc-project/bin/build
++++ b/.omc-project/bin/build
+@@ -1,6 +1,20 @@
+ #!/usr/bin/env bash
+-# The build, no tests: dist/tally.mjs, the src/ modules bundled into one module that must parse. A relative import of
+-# a missing module or name fails the build, naming it. Pass or fail is the exit code.
++# The build, no tests: first the asset warm-up (about 100 s, a progress line every 10 s), then dist/tally.mjs, the src/
++# modules bundled into one module that must parse. A relative import of a missing module or name fails the build,
++# naming it. Pass or fail is the exit code.
++#
++# TALLY_BUILD_WARMUP (seconds, default 100) and TALLY_BUILD_BEAT (seconds between progress lines, default 10) size the
++# warm-up for the testbed's own tests.
+ set -euo pipefail
+ cd "$(dirname "$0")/../.."
++
++warmup=${TALLY_BUILD_WARMUP:-100}
++beat=${TALLY_BUILD_BEAT:-10}
++elapsed=0
++while [ "$elapsed" -lt "$warmup" ]; do
++  echo "build: warming up the assets, $elapsed s of $warmup s"
++  sleep "$beat"
++  elapsed=$((elapsed + beat))
++done
++echo "build: assets warm after $warmup s"
+ node scripts/build.mjs

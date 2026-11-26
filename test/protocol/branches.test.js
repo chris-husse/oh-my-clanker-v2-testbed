@@ -539,6 +539,84 @@ test('fault/no-evidence: lint and unit green, only 07-invoice-instalments red wi
   assert.deepEqual(withoutTimes(heldState), withoutTimes(JSON.parse(readFileSync(join(folder, 'state.json'), 'utf8'))));
 });
 
+// A generated branch cloned into <dir>/checkout, its gates run straight from .omc-project/bin (each cds to the root).
+function gateBranch(id, branch) {
+  const dir = testbed();
+  assert.equal(generate(dir, id).status, 0);
+  const checkout = join(dir, 'checkout');
+  git(dir, 'clone', '--quiet', '--branch', branch, dir, checkout);
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const gate = (name, extra = {}) => spawnSync(join(checkout, '.omc-project/bin', name), [], {
+    cwd: checkout, encoding: 'utf8', env: { ...env, ...extra },
+  });
+  const run = (...args) => spawnSync('node', args, { cwd: checkout, encoding: 'utf8', env });
+  return { dir, checkout, gate, run, show: (file) => git(dir, 'show', `${branch}:${file}`) };
+}
+
+// The files a branch changes against main, from the two trees (the generator's own files left out).
+function changed(dir, branch) {
+  return git(dir, 'diff', '--name-only', 'main', branch, '--', '.', ':!scenarios', ':!scripts/build-branches.sh',
+    ':!test/protocol/branches.test.js').split('\n').filter(Boolean);
+}
+
+test('fault/unit-red: lint and e2e green, exactly one unit test red, a one-line fix in src/ greens the check gate', () => {
+  const b = gateBranch('fault-unit-red', 'fault/unit-red');
+  assert.deepEqual(changed(b.dir, 'fault/unit-red'), ['src/ledger.js'], 'the fault is in src/ only');
+  assert.equal(git(b.dir, 'diff', '--numstat', 'main', 'fault/unit-red', '--', 'src/ledger.js'), '1\t1\tsrc/ledger.js');
+  const unit = b.run('--test', '--disable-warning=ExperimentalWarning', '--test-reporter=tap', 'test/unit/*.test.js');
+  assert.deepEqual(notOk(unit.stdout), ['post rejects zero, fractional and non-numeric cents'], unit.stdout);
+  const check = b.gate('check');
+  assert.equal(check.status, 1, 'the check gate is red');
+  assert.doesNotMatch(check.stderr, /SyntaxError/, 'lint is green');
+  const e2e = b.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs');
+  assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
+  assert.deepEqual(resultLines(e2e.stdout), BASE_PASSES);
+  assert.equal(b.gate('build').status, 0, 'the build is green');
+  writeFileSync(join(b.checkout, 'src/ledger.js'), git(b.dir, 'show', 'main:src/ledger.js') + '\n');
+  const fixed = b.gate('check');
+  assert.equal(fixed.status, 0, fixed.stdout + fixed.stderr);
+});
+
+test('scenario/gate-flake: flaky clock fails the first check run of a checkout and passes the next; the notes say rerun', () => {
+  const b = gateBranch('scenario-gate-flake', 'scenario/gate-flake');
+  assert.deepEqual(changed(b.dir, 'scenario/gate-flake').sort(), ['.omc-project/bin/check.md', 'test/unit/clock.test.js']);
+  const notes = b.show('.omc-project/bin/check.md');
+  assert.match(notes, /\*\*`flaky clock`\*\*/);
+  assert.match(notes.replace(/\s+/g, ' '), /fails on the first run in a fresh worktree .* Rerun, do not fix/);
+  assert.ok(!existsSync(join(b.checkout, '.cache')), 'a fresh checkout has no .cache/');
+  const first = b.gate('check');
+  assert.equal(first.status, 1, 'the first run is red');
+  const failing = first.stdout.split('\n').filter((line) => line.startsWith('✖ ') && !line.startsWith('✖ failing tests'))
+    .map((line) => line.slice(2).replace(/ \(.*$/, ''));
+  assert.deepEqual([...new Set(failing)], ['flaky clock'], first.stdout);
+  assert.match(first.stdout, /the 20 ms timer overshot by \d+ ms \(tolerance 150 ms\)/);
+  assert.ok(existsSync(join(b.checkout, '.cache/clock-warm')), 'the run left its marker in .cache/');
+  assert.equal(git(b.checkout, 'status', '--porcelain'), '', 'the marker is ignored: the tree stays clean');
+  const second = b.gate('check');
+  assert.equal(second.status, 0, second.stdout + second.stderr);
+  assert.match(second.stdout, /✔ flaky clock/);
+  const e2e = b.run('--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs');
+  assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
+});
+
+test('scenario/slow-gate: build warms up first, a progress line per beat, then builds as on main', () => {
+  const b = gateBranch('scenario-slow-gate', 'scenario/slow-gate');
+  assert.deepEqual(changed(b.dir, 'scenario/slow-gate'), ['.omc-project/bin/build']);
+  const script = b.show('.omc-project/bin/build');
+  assert.match(script, /warmup=\$\{TALLY_BUILD_WARMUP:-100\}/);
+  assert.match(script, /beat=\$\{TALLY_BUILD_BEAT:-10\}/);
+  assert.match(script, /\nnode scripts\/build\.mjs$/, 'the real build last');
+  const started = Date.now();
+  const build = b.gate('build', { TALLY_BUILD_WARMUP: '3', TALLY_BUILD_BEAT: '1' });
+  assert.equal(build.status, 0, build.stdout + build.stderr);
+  assert.ok(Date.now() - started >= 3000, 'the warm-up waits');
+  assert.deepEqual(build.stdout.split('\n').filter((line) => line.startsWith('build: warming up')),
+    ['0 s of 3 s', '1 s of 3 s', '2 s of 3 s'].map((at) => `build: warming up the assets, ${at}`));
+  assert.match(build.stdout, /build: wrote dist\/tally\.mjs from \d+ modules\n$/);
+  execFileSync(process.execPath, ['--check', join(b.checkout, 'dist/tally.mjs')]);
+  assert.equal(b.gate('check').status, 0, 'check stays green');
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -563,9 +641,10 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
-    'no-evidence', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
+    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'branches.test.js', 'scenarios/fault', 'scenarios/scenario'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
-    'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence']) {
+    'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence', 'fault/unit-red', 'scenario/gate-flake',
+    'scenario/slow-gate']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {

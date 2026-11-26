@@ -158,7 +158,12 @@ test('verify --failed-only with no record exits 1', async () => {
   assert.match(verify.err, /verify --failed-only: nothing recorded to rerun/);
 });
 
-test('verify --step <step> runs that step alone, records its failure, and refuses another argument', async () => {
+// --step is the bash gate's (the overlay on main); a gate that does not name it in its usage has none
+const stepless = !readFileSync(join(root, '.omc-project/bin/verify'), 'utf8').includes('--step <lint|unit|e2e>');
+
+test('verify --step <step> runs that step alone, records its failure, and refuses another argument', {
+  skip: stepless && 'this gate has no --step',
+}, async () => {
   const dir = clone();
   const unit = await gate(dir, 'verify', ['--step', 'unit']);
   assert.equal(unit.code, 0, unit.out + unit.err);
