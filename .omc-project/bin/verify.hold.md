@@ -172,9 +172,10 @@ Never end a turn with a run held. Never stop a server, delete a database under `
 Your final report (the verify turn's own, above its `OUTCOME` line; not an investigation's result) states, in this
 order:
 
-1. Each `/investigate local` call: the scenario folder and its result, quoted (with its label, when it has one): the
-   values used, the `tally-local` calls (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and
-   the cause.
+1. Each `/investigate local` call: the scenario folder and its result, quoted, a result with a label quoted with its
+   label line first, at the start of a line of its own (`UNRESOLVED: …`, `HOLD_ENDED: …` or `BLOCKED: …`), as the
+   result begins: the values used, the `tally-local` calls (tool, `database`, `port`, `path` or `sql`), the quoted
+   rows or responses, and the cause.
 2. The `UNRESOLVED` investigations, the interrupted ones (`HOLD_ENDED:`) and the failing scenarios not investigated
    (more than 10, or the time limit), and which of those you fixed from the files. Every one of them on its own line,
    with its full scenario id and its title from `summary.md`, never shortened to a number or a span of numbers:

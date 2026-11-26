@@ -357,6 +357,8 @@ test('the notes give the owner\'s authorization a channel and allow only the ses
     assert.ok(hold.includes(text), `verify.hold.md says ${text}`);
   }
   assert.doesNotMatch(hold, /rerun `\/verify` with that instruction/);
+  assert.ok(hold.includes('a result with a label quoted with its label line first, at the start of a line of its own (`UNRESOLVED: …`, `HOLD_ENDED: …` or `BLOCKED: …`), as the result begins'),
+    'the report quotes a labelled result by its label line');
   assert.doesNotMatch(hold, /not completed, never fixed;/);
   const own = 'The one file under `.claude/projects` you may read is the one Claude Code itself points you at for a long tool result of this session (`<session id>/tool-results/<name>`); nothing else there.';
   assert.ok(hold.includes(own), 'verify.hold.md allows the session\'s own saved tool output only');
