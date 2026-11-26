@@ -1,0 +1,470 @@
+diff --git a/fixture/base/0001-Report-the-limit-flag-of-tally-report.patch b/fixture/base/0001-Report-the-limit-flag-of-tally-report.patch
+new file mode 100644
+index 0000000..478d280
+--- /dev/null
++++ b/fixture/base/0001-Report-the-limit-flag-of-tally-report.patch
+@@ -0,0 +1,112 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Tue, 24 Nov 2026 12:00:00 +0000
++Subject: [PATCH] Report: the --limit flag of tally report
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ README.md                |  4 +++-
++ bin/tally                |  6 ++++--
++ src/ledger.js            |  6 ++++--
++ test/unit/cli.test.js    | 11 +++++++++++
++ test/unit/ledger.test.js | 12 ++++++++++++
++ 5 files changed, 34 insertions(+), 5 deletions(-)
++
++diff --git a/README.md b/README.md
++index 8d64bfc..604ddde 100644
++--- a/README.md
+++++ b/README.md
++@@ -7,7 +7,9 @@ A tiny dependency-free ledger: a SQLite-backed library, an HTTP server and a CLI
++ 
++     bin/tally add <account> <amount> [--memo m]
++     bin/tally balance <account>
++-    bin/tally report [--json]
+++    bin/tally report [--json] [--limit <n>]
+++
+++`report --limit <n>` prints at most `n` rows of the report, in the order it is printed.
++ 
++ The database path comes from `TALLY_DB` (default `data/tally.db`).
++ 
++diff --git a/bin/tally b/bin/tally
++index 833b0ca..3e1d43a 100755
++--- a/bin/tally
+++++ b/bin/tally
++@@ -5,7 +5,7 @@ import { post, balance, report } from '../src/ledger.js';
++ const USAGE = `usage:
++   tally add <account> <amount> [--memo m]
++   tally balance <account>
++-  tally report [--json]`;
+++  tally report [--json] [--limit <n>]`;
++ 
++ function dollars(cents) {
++   return (cents / 100).toFixed(2);
++@@ -44,7 +44,9 @@ function showBalance(db, args) {
++ }
++ 
++ function showReport(db, args) {
++-  const rows = report(db);
+++  const limit = flagValue(args, '--limit');
+++  if (args.includes('--limit') && limit === undefined) fail(USAGE);
+++  const rows = report(db, { limit: limit === undefined ? undefined : Number(limit) });
++   if (args.includes('--json')) console.log(JSON.stringify(rows));
++   else for (const row of rows) console.log(`${row.account}\t${dollars(row.cents)}`);
++ }
++diff --git a/src/ledger.js b/src/ledger.js
++index 05ea5e4..a0f60e2 100644
++--- a/src/ledger.js
+++++ b/src/ledger.js
++@@ -26,11 +26,13 @@ export function balance(db, account) {
++   return Number(row.cents);
++ }
++ 
++-export function report(db) {
++-  return db
+++export function report(db, { limit } = {}) {
+++  if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) throw new Error('limit must be a positive integer');
+++  const rows = db
++     .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account')
++     .all()
++     .map((row) => ({ account: row.account, cents: Number(row.cents) }));
+++  return limit === undefined ? rows : rows.slice(0, limit);
++ }
++ 
++ export function state(db) {
++diff --git a/test/unit/cli.test.js b/test/unit/cli.test.js
++index 798c0b1..c63eed8 100644
++--- a/test/unit/cli.test.js
+++++ b/test/unit/cli.test.js
++@@ -39,3 +39,14 @@ test('report prints tab separated lines', () => {
++     assert.equal(tally('report'), 'acct\t10.50\n');
++   });
++ });
+++
+++test('report --limit prints at most that many rows', () => {
+++  withDb((tally) => {
+++    tally('add', 'abe', '1.00');
+++    tally('add', 'kim', '2.00');
+++    tally('add', 'zed', '3.00');
+++    assert.equal(tally('report', '--limit', '2'), 'abe\t1.00\nkim\t2.00\n');
+++    assert.throws(() => tally('report', '--limit'), (error) => error.status === 1);
+++    assert.throws(() => tally('report', '--limit', 'two'), (error) => error.status === 1);
+++  });
+++});
++diff --git a/test/unit/ledger.test.js b/test/unit/ledger.test.js
++index e8a62ff..685c55d 100644
++--- a/test/unit/ledger.test.js
+++++ b/test/unit/ledger.test.js
++@@ -42,3 +42,15 @@ test('report is sorted by account', () => {
++     { account: 'zed', cents: 1 },
++   ]);
++ });
+++
+++test('report keeps the first rows up to the limit', () => {
+++  const db = openDb(':memory:');
+++  post(db, { account: 'zed', cents: 1 });
+++  post(db, { account: 'abe', cents: 2 });
+++  post(db, { account: 'kim', cents: 3 });
+++  assert.deepEqual(report(db, { limit: 2 }), [
+++    { account: 'abe', cents: 2 },
+++    { account: 'kim', cents: 3 },
+++  ]);
+++  assert.throws(() => report(db, { limit: 0 }), /limit must be a positive integer/);
+++});
+diff --git a/fixture/branch/0001-Design-sort-the-report-by-cents.patch b/fixture/branch/0001-Design-sort-the-report-by-cents.patch
+new file mode 100644
+index 0000000..67ab0fe
+--- /dev/null
++++ b/fixture/branch/0001-Design-sort-the-report-by-cents.patch
+@@ -0,0 +1,51 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Fri, 20 Nov 2026 09:00:00 +0000
++Subject: [PATCH 1/5] Design: sort the report by cents
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../specs/2026-11-20-report-sort-design.md    | 34 +++++++++++++++++++
++ 1 file changed, 34 insertions(+)
++ create mode 100644 docs/superpowers/specs/2026-11-20-report-sort-design.md
++
++diff --git a/docs/superpowers/specs/2026-11-20-report-sort-design.md b/docs/superpowers/specs/2026-11-20-report-sort-design.md
++new file mode 100644
++index 0000000..d619e52
++--- /dev/null
+++++ b/docs/superpowers/specs/2026-11-20-report-sort-design.md
++@@ -0,0 +1,34 @@
+++# Sort the report by cents
+++
+++Date: 2026-11-20. Branch: `feature/report-sort`.
+++
+++## Context and goal
+++
+++`tally report` lists every account with its balance, in account order. A script that wants the largest balances has to
+++sort the rows itself. `report` gets a `--sort <key>` option, so that `tally report --json --sort cents` prints the rows
+++with the largest balance first.
+++
+++## Behaviour
+++
+++- `tally report [--json] [--sort account|cents]`.
+++- `--sort account` is the default and today's order: ascending by account.
+++- `--sort cents` orders the rows by balance, largest first; rows with the same balance stay in account order.
+++- A key other than `account` or `cents` fails with `sort must be account or cents` on stderr and exit code 1. `--sort`
+++  with no key after it prints the usage text and exits 1.
+++- The key applies to the plain output and to `--json`; the shape of a row does not change.
+++
+++## Design
+++
+++- `report(db, { sort = 'account' } = {})` in `src/ledger.js` takes the key and throws `Error('sort must be account or
+++  cents')` for any other. The query keeps `ORDER BY account`; the `cents` order is a stable sort over its rows, so ties
+++  keep account order. The key never reaches the SQL text.
+++- `showReport` in `bin/tally` reads the key with `flagValue(args, '--sort')` and passes it to `report`; the `USAGE` text
+++  and the README's command list name the option.
+++
+++## Decisions and the pages they change
+++
+++No decision of this branch changes a protected page: the project protects none.
+++
+++## Testing
+++
+++Unit tests only: `test/unit/ledger.test.js` for `report`, `test/unit/cli.test.js` for the CLI. No end-to-end scenario.
+diff --git a/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch b/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch
+new file mode 100644
+index 0000000..d4602a3
+--- /dev/null
++++ b/fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch
+@@ -0,0 +1,77 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Fri, 20 Nov 2026 09:10:00 +0000
++Subject: [PATCH 2/5] Plan: Sort the report by cents, 2 tasks
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../plans/2026-11-20-report-sort-plan.md      | 60 +++++++++++++++++++
++ 1 file changed, 60 insertions(+)
++ create mode 100644 docs/superpowers/plans/2026-11-20-report-sort-plan.md
++
++diff --git a/docs/superpowers/plans/2026-11-20-report-sort-plan.md b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
++new file mode 100644
++index 0000000..f4b8b4a
++--- /dev/null
+++++ b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
++@@ -0,0 +1,60 @@
+++# Sort the report by cents — Implementation Plan
+++
+++Gate: check
+++
+++**Goal:** `tally report [--json] [--sort account|cents]`: with `--sort cents` the rows come largest balance first.
+++
+++**Architecture:** `report(db, { sort })` in `src/ledger.js` orders the rows; `bin/tally` reads the flag and passes it
+++on; the usage text and the README name it.
+++
+++**Tech Stack:** Node 22, ES modules, `node:sqlite`, `node:test`.
+++
+++**Spec:** `docs/superpowers/specs/2026-11-20-report-sort-design.md` (the record). Where this plan and the record
+++disagree, the record wins.
+++
+++## Global Constraints
+++
+++- Node's standard library only; no dependency.
+++- A behaviour change comes with its unit test, written first and seen red.
+++- The SQL text of `report` stays as it is: the `cents` order is a stable sort over the rows the query returns.
+++- A commit stages its files by name and ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+++
+++## Review Focus
+++
+++- **Ties** under `--sort cents` keep account order (Task 1 pins it).
+++- **A missing key** after `--sort` is the usage error, an unknown key the `sort must be account or cents` error
+++  (Task 2 pins both).
+++
+++### Task 1: report() takes a sort key
+++
+++Complexity: simple
+++
+++**Files:** modify `src/ledger.js` and `test/unit/ledger.test.js`.
+++
+++- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `report sorts by cents, largest first, ties
+++  by account` (accounts `abe` 5, `zed` 1, `kim` 5, `lee` 9: `{ sort: 'cents' }` gives `lee`, `abe`, `kim`, `zed`) and
+++  `report rejects an unknown sort key` (`{ sort: 'memo' }` throws `sort must be account or cents`).
+++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js` fails on
+++  the two new tests only.
+++- [ ] **Step 3: implement.** `report(db, { sort = 'account' } = {})` throws for a key other than `account` or `cents`,
+++  keeps its query, and for `cents` returns the rows stably sorted by `b.cents - a.cents`.
+++- [ ] **Step 4: run them green.** The same command passes.
+++- [ ] **Step 5: commit** `src/ledger.js` and `test/unit/ledger.test.js` as `Report: sort by cents in ledger.report`.
+++
+++### Task 2: the CLI flag and the docs
+++
+++Complexity: simple
+++
+++**Files:** modify `bin/tally`, `test/unit/cli.test.js` and `README.md`.
+++
+++- [ ] **Step 1: the failing tests.** Append to `test/unit/cli.test.js`: `report --json --sort cents orders by balance,
+++  largest first` (accounts `abe` 1.00, `zed` 3.00: `[{"account":"zed","cents":300},{"account":"abe","cents":100}]`),
+++  `report --sort cents prints the largest balance first in the plain output`, and `report --sort with no key or an
+++  unknown key fails` (`execFileSync` throws with status 1 for `report --sort` and for `report --sort memo`).
+++- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/cli.test.js` fails on the
+++  new tests only.
+++- [ ] **Step 3: implement.** `showReport` in `bin/tally` reads `--sort` with `flagValue`, calls `fail(USAGE)` when the
+++  flag is there with no key after it, and passes the key to `report`; `USAGE` and the `README.md` command list read
+++  `tally report [--json] [--sort account|cents]`.
+++- [ ] **Step 4: run them green.** The same command passes, and so does `test/unit/ledger.test.js`.
+++- [ ] **Step 5: commit** `bin/tally`, `test/unit/cli.test.js` and `README.md` as `Report: the --sort flag of tally report`.
+diff --git a/fixture/branch/0003-Report-sort-by-cents-in-ledger.report.patch b/fixture/branch/0003-Report-sort-by-cents-in-ledger.report.patch
+new file mode 100644
+index 0000000..49be255
+--- /dev/null
++++ b/fixture/branch/0003-Report-sort-by-cents-in-ledger.report.patch
+@@ -0,0 +1,58 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Fri, 20 Nov 2026 10:00:00 +0000
++Subject: [PATCH 3/5] Report: sort by cents in ledger.report
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ src/ledger.js            |  6 ++++--
++ test/unit/ledger.test.js | 19 +++++++++++++++++++
++ 2 files changed, 23 insertions(+), 2 deletions(-)
++
++diff --git a/src/ledger.js b/src/ledger.js
++index 05ea5e4..51c0b58 100644
++--- a/src/ledger.js
+++++ b/src/ledger.js
++@@ -26,11 +26,13 @@ export function balance(db, account) {
++   return Number(row.cents);
++ }
++ 
++-export function report(db) {
++-  return db
+++export function report(db, { sort = 'account' } = {}) {
+++  if (sort !== 'account' && sort !== 'cents') throw new Error('sort must be account or cents');
+++  const rows = db
++     .prepare('SELECT account, SUM(cents) AS cents FROM entries GROUP BY account ORDER BY account')
++     .all()
++     .map((row) => ({ account: row.account, cents: Number(row.cents) }));
+++  return sort === 'cents' ? rows.sort((a, b) => b.cents - a.cents) : rows;
++ }
++ 
++ export function state(db) {
++diff --git a/test/unit/ledger.test.js b/test/unit/ledger.test.js
++index e8a62ff..02bae63 100644
++--- a/test/unit/ledger.test.js
+++++ b/test/unit/ledger.test.js
++@@ -42,3 +42,22 @@ test('report is sorted by account', () => {
++     { account: 'zed', cents: 1 },
++   ]);
++ });
+++
+++test('report sorts by cents, largest first, ties by account', () => {
+++  const db = openDb(':memory:');
+++  post(db, { account: 'zed', cents: 1 });
+++  post(db, { account: 'abe', cents: 5 });
+++  post(db, { account: 'kim', cents: 5 });
+++  post(db, { account: 'lee', cents: 9 });
+++  assert.deepEqual(report(db, { sort: 'cents' }), [
+++    { account: 'lee', cents: 9 },
+++    { account: 'abe', cents: 5 },
+++    { account: 'kim', cents: 5 },
+++    { account: 'zed', cents: 1 },
+++  ]);
+++});
+++
+++test('report rejects an unknown sort key', () => {
+++  const db = openDb(':memory:');
+++  assert.throws(() => report(db, { sort: 'memo' }), /sort must be account or cents/);
+++});
+diff --git a/fixture/branch/0004-Report-the-sort-flag-of-tally-report.patch b/fixture/branch/0004-Report-the-sort-flag-of-tally-report.patch
+new file mode 100644
+index 0000000..13645f6
+--- /dev/null
++++ b/fixture/branch/0004-Report-the-sort-flag-of-tally-report.patch
+@@ -0,0 +1,81 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Fri, 20 Nov 2026 10:30:00 +0000
++Subject: [PATCH 4/5] Report: the --sort flag of tally report
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ README.md             |  2 +-
++ bin/tally             |  6 ++++--
++ test/unit/cli.test.js | 24 ++++++++++++++++++++++++
++ 3 files changed, 29 insertions(+), 3 deletions(-)
++
++diff --git a/README.md b/README.md
++index 8d64bfc..8b589a1 100644
++--- a/README.md
+++++ b/README.md
++@@ -7,7 +7,7 @@ A tiny dependency-free ledger: a SQLite-backed library, an HTTP server and a CLI
++ 
++     bin/tally add <account> <amount> [--memo m]
++     bin/tally balance <account>
++-    bin/tally report [--json]
+++    bin/tally report [--json] [--sort account|cents]
++ 
++ The database path comes from `TALLY_DB` (default `data/tally.db`).
++ 
++diff --git a/bin/tally b/bin/tally
++index 833b0ca..5f73a78 100755
++--- a/bin/tally
+++++ b/bin/tally
++@@ -5,7 +5,7 @@ import { post, balance, report } from '../src/ledger.js';
++ const USAGE = `usage:
++   tally add <account> <amount> [--memo m]
++   tally balance <account>
++-  tally report [--json]`;
+++  tally report [--json] [--sort account|cents]`;
++ 
++ function dollars(cents) {
++   return (cents / 100).toFixed(2);
++@@ -44,7 +44,9 @@ function showBalance(db, args) {
++ }
++ 
++ function showReport(db, args) {
++-  const rows = report(db);
+++  const sort = flagValue(args, '--sort');
+++  if (args.includes('--sort') && sort === undefined) fail(USAGE);
+++  const rows = report(db, { sort });
++   if (args.includes('--json')) console.log(JSON.stringify(rows));
++   else for (const row of rows) console.log(`${row.account}\t${dollars(row.cents)}`);
++ }
++diff --git a/test/unit/cli.test.js b/test/unit/cli.test.js
++index 798c0b1..ea8c15b 100644
++--- a/test/unit/cli.test.js
+++++ b/test/unit/cli.test.js
++@@ -39,3 +39,27 @@ test('report prints tab separated lines', () => {
++     assert.equal(tally('report'), 'acct\t10.50\n');
++   });
++ });
+++
+++test('report --json --sort cents orders by balance, largest first', () => {
+++  withDb((tally) => {
+++    tally('add', 'abe', '1.00');
+++    tally('add', 'zed', '3.00');
+++    assert.equal(tally('report', '--json', '--sort', 'cents'), '[{"account":"zed","cents":300},{"account":"abe","cents":100}]\n');
+++  });
+++});
+++
+++test('report --sort cents prints the largest balance first in the plain output', () => {
+++  withDb((tally) => {
+++    tally('add', 'abe', '1.00');
+++    tally('add', 'zed', '3.00');
+++    assert.equal(tally('report', '--sort', 'cents'), 'zed\t3.00\nabe\t1.00\n');
+++  });
+++});
+++
+++test('report --sort with no key or an unknown key fails', () => {
+++  withDb((tally) => {
+++    tally('add', 'abe', '1.00');
+++    assert.throws(() => tally('report', '--sort'), (error) => error.status === 1);
+++    assert.throws(() => tally('report', '--sort', 'memo'), (error) => error.status === 1);
+++  });
+++});
+diff --git a/fixture/branch/0005-Plan-tasks-1-and-2-done.patch b/fixture/branch/0005-Plan-tasks-1-and-2-done.patch
+new file mode 100644
+index 0000000..3b382d6
+--- /dev/null
++++ b/fixture/branch/0005-Plan-tasks-1-and-2-done.patch
+@@ -0,0 +1,55 @@
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: tally author <author@example.invalid>
++Date: Fri, 20 Nov 2026 10:40:00 +0000
++Subject: [PATCH 5/5] Plan: tasks 1 and 2 done
++
++Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
++---
++ .../plans/2026-11-20-report-sort-plan.md      | 20 +++++++++----------
++ 1 file changed, 10 insertions(+), 10 deletions(-)
++
++diff --git a/docs/superpowers/plans/2026-11-20-report-sort-plan.md b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
++index f4b8b4a..d48fe2a 100644
++--- a/docs/superpowers/plans/2026-11-20-report-sort-plan.md
+++++ b/docs/superpowers/plans/2026-11-20-report-sort-plan.md
++@@ -31,15 +31,15 @@ Complexity: simple
++ 
++ **Files:** modify `src/ledger.js` and `test/unit/ledger.test.js`.
++ 
++-- [ ] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `report sorts by cents, largest first, ties
+++- [x] **Step 1: the failing tests.** Append to `test/unit/ledger.test.js`: `report sorts by cents, largest first, ties
++   by account` (accounts `abe` 5, `zed` 1, `kim` 5, `lee` 9: `{ sort: 'cents' }` gives `lee`, `abe`, `kim`, `zed`) and
++   `report rejects an unknown sort key` (`{ sort: 'memo' }` throws `sort must be account or cents`).
++-- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js` fails on
+++- [x] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/ledger.test.js` fails on
++   the two new tests only.
++-- [ ] **Step 3: implement.** `report(db, { sort = 'account' } = {})` throws for a key other than `account` or `cents`,
+++- [x] **Step 3: implement.** `report(db, { sort = 'account' } = {})` throws for a key other than `account` or `cents`,
++   keeps its query, and for `cents` returns the rows stably sorted by `b.cents - a.cents`.
++-- [ ] **Step 4: run them green.** The same command passes.
++-- [ ] **Step 5: commit** `src/ledger.js` and `test/unit/ledger.test.js` as `Report: sort by cents in ledger.report`.
+++- [x] **Step 4: run them green.** The same command passes.
+++- [x] **Step 5: commit** `src/ledger.js` and `test/unit/ledger.test.js` as `Report: sort by cents in ledger.report`.
++ 
++ ### Task 2: the CLI flag and the docs
++ 
++@@ -47,14 +47,14 @@ Complexity: simple
++ 
++ **Files:** modify `bin/tally`, `test/unit/cli.test.js` and `README.md`.
++ 
++-- [ ] **Step 1: the failing tests.** Append to `test/unit/cli.test.js`: `report --json --sort cents orders by balance,
+++- [x] **Step 1: the failing tests.** Append to `test/unit/cli.test.js`: `report --json --sort cents orders by balance,
++   largest first` (accounts `abe` 1.00, `zed` 3.00: `[{"account":"zed","cents":300},{"account":"abe","cents":100}]`),
++   `report --sort cents prints the largest balance first in the plain output`, and `report --sort with no key or an
++   unknown key fails` (`execFileSync` throws with status 1 for `report --sort` and for `report --sort memo`).
++-- [ ] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/cli.test.js` fails on the
+++- [x] **Step 2: run them red.** `node --disable-warning=ExperimentalWarning --test test/unit/cli.test.js` fails on the
++   new tests only.
++-- [ ] **Step 3: implement.** `showReport` in `bin/tally` reads `--sort` with `flagValue`, calls `fail(USAGE)` when the
+++- [x] **Step 3: implement.** `showReport` in `bin/tally` reads `--sort` with `flagValue`, calls `fail(USAGE)` when the
++   flag is there with no key after it, and passes the key to `report`; `USAGE` and the `README.md` command list read
++   `tally report [--json] [--sort account|cents]`.
++-- [ ] **Step 4: run them green.** The same command passes, and so does `test/unit/ledger.test.js`.
++-- [ ] **Step 5: commit** `bin/tally`, `test/unit/cli.test.js` and `README.md` as `Report: the --sort flag of tally report`.
+++- [x] **Step 4: run them green.** The same command passes, and so does `test/unit/ledger.test.js`.
+++- [x] **Step 5: commit** `bin/tally`, `test/unit/cli.test.js` and `README.md` as `Report: the --sort flag of tally report`.

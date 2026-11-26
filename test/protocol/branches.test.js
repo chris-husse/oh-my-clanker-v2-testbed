@@ -693,6 +693,109 @@ test('scenario/unfixable: two unit tests ask balance() of the same state for 0 a
   assert.equal(b.gate('check').status, 1, 'the fix leaves the gate red');
 });
 
+// The pipeline scenarios carry their branch as git mailbox files under fixture/branch/ (the commits the scenario's
+// container replays with `git am` on top of the base) and fixture/base/ (the commit that moves the base).
+const AM = ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'am', '--quiet'];
+
+function mailbox(b, folder) {
+  return git(b.dir, 'ls-tree', '--name-only', b.branch, `${folder}/`).split('\n').filter(Boolean).sort();
+}
+
+// A checkout of main with the files of `folder` replayed on a branch of its own; the replayed commits' subjects.
+function replay(b, folder, name) {
+  const work = join(b.dir, `replay-${name}`);
+  git(b.dir, 'clone', '--quiet', '--branch', 'main', b.dir, work);
+  git(work, 'switch', '--quiet', '-c', name);
+  for (const file of mailbox(b, folder)) {
+    const mail = join(b.dir, `${name}-${file.split('/').pop()}`);
+    writeFileSync(mail, git(b.dir, 'show', `${b.branch}:${file}`) + '\n');
+    git(work, ...AM, mail);
+  }
+  return { work, subjects: git(work, 'log', '--reverse', '--format=%s', 'main..HEAD').split('\n').filter(Boolean) };
+}
+
+function branchOf(id, branch) {
+  const b = gateBranch(id, branch);
+  return { ...b, branch };
+}
+
+function unitTests(dir) {
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  return spawnSync('node', [...TAP_UNITS], { cwd: dir, encoding: 'utf8', env });
+}
+
+function e2eRun(dir) {
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  return spawnSync('node', ['--disable-warning=ExperimentalWarning', 'scripts/e2e.mjs'], { cwd: dir, encoding: 'utf8', env });
+}
+
+test('scenario/with-plan: two mailbox commits, a design record and a two-task plan, no code', () => {
+  const b = branchOf('scenario-with-plan', 'scenario/with-plan');
+  assert.deepEqual(changed(b.dir, 'scenario/with-plan'), [
+    'fixture/branch/0001-Design-sort-the-report-by-cents.patch',
+    'fixture/branch/0002-Plan-Sort-the-report-by-cents-2-tasks.patch',
+  ]);
+  const { work, subjects } = replay(b, 'fixture/branch', 'feature');
+  assert.deepEqual(subjects, ['Design: sort the report by cents', 'Plan: Sort the report by cents, 2 tasks']);
+  assert.equal(git(work, 'diff', '--name-only', 'main', 'HEAD').split('\n').sort().join(), [
+    'docs/superpowers/plans/2026-11-20-report-sort-plan.md',
+    'docs/superpowers/specs/2026-11-20-report-sort-design.md',
+  ].join(), 'only the two documents');
+  const plan = readFileSync(join(work, 'docs/superpowers/plans/2026-11-20-report-sort-plan.md'), 'utf8');
+  assert.deepEqual([...plan.matchAll(/^### Task (\d+): /gm)].map((m) => m[1]), ['1', '2']);
+  assert.equal([...plan.matchAll(/^Complexity: simple$/gm)].length, 2);
+  assert.equal([...plan.matchAll(/^\s*- \[ \]/gm)].length, 10, 'five unticked steps per task');
+  assert.doesNotMatch(plan.replace(/^.*Co-Authored-By:.*$/gm, ''), /\b(?:sonnet|opus|haiku|fable)\b/i, 'complexity only');
+  const record = readFileSync(join(work, 'docs/superpowers/specs/2026-11-20-report-sort-design.md'), 'utf8');
+  assert.match(record, /--sort cents/);
+  assert.match(record, /Decisions and the pages they change/);
+  assert.equal(unitTests(work).status, 0, 'the unit tests of main stay green: no code yet');
+});
+
+test('scenario/audit-moved-base: a finished two-task branch, and a base commit that conflicts with it in five files', () => {
+  const b = branchOf('scenario-audit-moved-base', 'scenario/audit-moved-base');
+  assert.equal(mailbox(b, 'fixture/branch').length, 5);
+  assert.deepEqual(mailbox(b, 'fixture/base'), ['fixture/base/0001-Report-the-limit-flag-of-tally-report.patch']);
+  const feature = replay(b, 'fixture/branch', 'feature');
+  assert.deepEqual(feature.subjects, [
+    'Design: sort the report by cents',
+    'Plan: Sort the report by cents, 2 tasks',
+    'Report: sort by cents in ledger.report',
+    'Report: the --sort flag of tally report',
+    'Plan: tasks 1 and 2 done',
+  ]);
+  const plan = readFileSync(join(feature.work, 'docs/superpowers/plans/2026-11-20-report-sort-plan.md'), 'utf8');
+  assert.doesNotMatch(plan, /- \[ \]/, 'every step of the plan is ticked');
+  const unit = unitTests(feature.work);
+  assert.equal(unit.status, 0, unit.stdout + unit.stderr);
+  const e2e = e2eRun(feature.work);
+  assert.equal(e2e.status, 0, e2e.stdout + e2e.stderr);
+  // the branch's feature, as a script reads it
+  const env = { ...process.env, TALLY_DB: join(b.dir, 'feature.db') };
+  const tally = (...args) => execFileSync(join(feature.work, 'bin/tally'), args, { env, encoding: 'utf8' });
+  tally('add', 'abe', '1.00');
+  tally('add', 'zed', '3.00');
+  tally('add', 'kim', '2.00');
+  assert.equal(tally('report', '--json', '--sort', 'cents'),
+    '[{"account":"zed","cents":300},{"account":"kim","cents":200},{"account":"abe","cents":100}]\n');
+
+  const moved = replay(b, 'fixture/base', 'moved');
+  assert.deepEqual(moved.subjects, ['Report: the --limit flag of tally report']);
+  const movedUnit = unitTests(moved.work);
+  assert.equal(movedUnit.status, 0, movedUnit.stdout + movedUnit.stderr);
+  const movedE2e = e2eRun(moved.work);
+  assert.equal(movedE2e.status, 0, movedE2e.stdout + movedE2e.stderr);
+
+  // the squashed branch rebased onto the moved base stops with a conflict in exactly the five files both sides touch
+  git(feature.work, 'reset', '--soft', 'main');
+  git(feature.work, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '--quiet', '-m', 'squashed');
+  git(feature.work, 'fetch', '--quiet', moved.work, 'moved:moved');
+  const rebase = spawnSync('git', ['rebase', 'moved'], { cwd: feature.work, encoding: 'utf8' });
+  assert.notEqual(rebase.status, 0, 'the rebase stops');
+  assert.deepEqual(git(feature.work, 'diff', '--name-only', '--diff-filter=U').split('\n').sort(),
+    ['README.md', 'bin/tally', 'src/ledger.js', 'test/unit/cli.test.js', 'test/unit/ledger.test.js']);
+});
+
 test('an unknown id exits non-zero with a message and creates nothing', () => {
   const dir = testbed();
   const result = generate(dir, 'no-such-scenario');
@@ -717,11 +820,13 @@ test('generated trees hold no trace of the generator, its test or any scenario i
   const dir = testbed();
   assert.equal(generate(dir).status, 0);
   const needles = ['build-branches', 'e2e-red', 'shell-gate', 'blind-db', 'blind-http', 'blind-state', 'two-red', 'many-red',
-    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'gate-cheat', 'unfixable', 'branches.test.js', 'scenarios/fault',
+    'no-evidence', 'unit-red', 'gate-flake', 'slow-gate', 'gate-cheat', 'unfixable', 'with-plan', 'audit-moved-base',
+    'branches.test.js', 'scenarios/fault',
     'scenarios/scenario', 'testbed'];
   for (const branch of ['vanilla', 'fault/e2e-red', 'scenario/shell-gate', 'fault/blind-db', 'fault/blind-http',
     'fault/blind-state', 'fault/two-red', 'fault/many-red', 'fault/no-evidence', 'fault/unit-red', 'scenario/gate-flake',
-    'scenario/slow-gate', 'scenario/gate-cheat', 'scenario/unfixable']) {
+    'scenario/slow-gate', 'scenario/gate-cheat', 'scenario/unfixable', 'scenario/with-plan',
+    'scenario/audit-moved-base']) {
     const files = tree(dir, branch);
     assert.ok(!files.includes('test/protocol/branches.test.js'), `${branch}: no generator test`);
     for (const file of files) {
