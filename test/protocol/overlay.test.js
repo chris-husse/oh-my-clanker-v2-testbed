@@ -158,6 +158,33 @@ test('verify --failed-only with no record exits 1', async () => {
   assert.match(verify.err, /verify --failed-only: nothing recorded to rerun/);
 });
 
+test('verify --step <step> runs that step alone, records its failure, and refuses another argument', async () => {
+  const dir = clone();
+  const unit = await gate(dir, 'verify', ['--step', 'unit']);
+  assert.equal(unit.code, 0, unit.out + unit.err);
+  assert.match(unit.out, /post and balance sum cents/, 'the unit tests ran');
+  assert.match(unit.err, /^verify: unit$/m);
+  assert.doesNotMatch(unit.err, /^verify: (?:lint|e2e)$/m, 'no other step ran');
+  assert.doesNotMatch(unit.out, /^(?:PASS|FAIL) /m, 'no e2e scenario ran');
+  assert.match(unit.err, /verify --step unit: the step passes; only a full run gives the verdict$/m);
+
+  writeFileSync(join(dir, 'test/unit/zz-red.test.js'),
+    "import { test } from 'node:test';\ntest('step red', () => { throw new Error('red on purpose'); });\n");
+  const red = await gate(dir, 'verify', ['--step', 'unit']);
+  assert.notEqual(red.code, 0);
+  assert.deepEqual(records(dir), { unit: ['step red'] });
+  rmSync(join(dir, 'test/unit/zz-red.test.js'));
+
+  const lint = await gate(dir, 'verify', ['--step', 'lint']);
+  assert.equal(lint.code, 0, lint.out + lint.err);
+  assert.doesNotMatch(lint.out, /post and balance sum cents/, 'no unit test ran');
+  for (const args of [['--step'], ['--step', 'smoke'], ['--step', 'unit', 'x'], ['--failed-only', '--step']]) {
+    const refused = await gate(dir, 'verify', args);
+    assert.equal(refused.code, 2, args.join(' '));
+    assert.match(refused.err, /usage: omc\/bin\/verify \[--failed-only \| --step <lint\|unit\|e2e>\]/);
+  }
+});
+
 test('a red e2e scenario holds, is recorded, and --failed-only reruns only it', async () => {
   const dir = clone();
   const scenario = join(dir, 'e2e/scenarios/95-red-overlay.mjs');

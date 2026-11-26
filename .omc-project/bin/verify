@@ -4,6 +4,7 @@
 #
 #   omc/bin/verify               every step
 #   omc/bin/verify --failed-only only the steps the last attempt recorded as failed, each narrowed to what failed
+#   omc/bin/verify --step <step> only that step (lint, unit or e2e), whole
 #                                (the gate runner withholds a pass for any run with arguments)
 #
 # A failing step is recorded under .cache/verify/failed/ (scripts/failed.mjs) and the script stops there, so an
@@ -13,10 +14,12 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 rerun=0
-case "$#:${1-}" in
-  0:) ;;
-  1:--failed-only) rerun=1 ;;
-  *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
+only=
+case "$#:${1-}:${2-}" in
+  0::) ;;
+  1:--failed-only:) rerun=1 ;;
+  2:--step:lint | 2:--step:unit | 2:--step:e2e) only=$2 ;;
+  *) echo "usage: omc/bin/verify [--failed-only | --step <lint|unit|e2e>]" >&2; exit 2 ;;
 esac
 
 failed() { node scripts/failed.mjs "$@"; }
@@ -70,11 +73,15 @@ record_failure() {
 }
 
 # step <name> <command...>: run the command with its output untouched; a pass clears the step's record, a failure
-# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
+# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs, with
+# --step only the step named.
 step() {
   local name=$1 status=0
   shift
   if [ "$rerun" = 1 ] && ! recorded has "$name"; then
+    return 0
+  fi
+  if [ -n "$only" ] && [ "$name" != "$only" ]; then
     return 0
   fi
   echo "verify: $name" >&2
@@ -129,4 +136,7 @@ e2e
 
 if [ "$rerun" = 1 ]; then
   echo "verify --failed-only: every recorded step passes now; only a full run gives the verdict" >&2
+fi
+if [ -n "$only" ]; then
+  echo "verify --step $only: the step passes; only a full run gives the verdict" >&2
 fi

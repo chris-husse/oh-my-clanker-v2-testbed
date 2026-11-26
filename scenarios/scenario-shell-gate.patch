@@ -25,10 +25,10 @@ index 0000000..e0ed421
 +  --test-reporter=tap --test-reporter-destination=.cache/verify/unit.tap \
 +  "$@" 'test/unit/*.test.js'
 diff --git a/.omc-project/bin/verify b/.omc-project/bin/verify
-index eb41c9d..71311d9 100755
+index 7ca5e28..71311d9 100755
 --- a/.omc-project/bin/verify
 +++ b/.omc-project/bin/verify
-@@ -1,16 +1,17 @@
+@@ -1,142 +1,137 @@
 -#!/usr/bin/env bash
 -# The milestone gate: lint (`node --check`), the unit tests, then the e2e scenarios, cheapest first. Pass or fail is
 -# the exit code.
@@ -38,6 +38,7 @@ index eb41c9d..71311d9 100755
  #
  #   omc/bin/verify               every step
  #   omc/bin/verify --failed-only only the steps the last attempt recorded as failed, each narrowed to what failed
+-#   omc/bin/verify --step <step> only that step (lint, unit or e2e), whole
  #                                (the gate runner withholds a pass for any run with arguments)
  #
 -# A failing step is recorded under .cache/verify/failed/ (scripts/failed.mjs) and the script stops there, so an
@@ -53,10 +54,16 @@ index eb41c9d..71311d9 100755
 +cd "$(dirname "$0")/../.." || exit 2
  
  rerun=0
- case "$#:${1-}" in
-@@ -18,114 +19,118 @@ case "$#:${1-}" in
-   1:--failed-only) rerun=1 ;;
-   *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
+-only=
+-case "$#:${1-}:${2-}" in
+-  0::) ;;
+-  1:--failed-only:) rerun=1 ;;
+-  2:--step:lint | 2:--step:unit | 2:--step:e2e) only=$2 ;;
+-  *) echo "usage: omc/bin/verify [--failed-only | --step <lint|unit|e2e>]" >&2; exit 2 ;;
++case "$#:${1-}" in
++  0:) ;;
++  1:--failed-only) rerun=1 ;;
++  *) echo "usage: omc/bin/verify [--failed-only]" >&2; exit 2 ;;
  esac
 +set --
  
@@ -148,12 +155,17 @@ index eb41c9d..71311d9 100755
  }
  
  # step <name> <command...>: run the command with its output untouched; a pass clears the step's record, a failure
- # records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
+-# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs, with
+-# --step only the step named.
++# records it and ends the script with the command's status. In --failed-only mode only a recorded step runs.
  step() {
 -  local name=$1 status=0
 +  name=$1
    shift
 -  if [ "$rerun" = 1 ] && ! recorded has "$name"; then
+-    return 0
+-  fi
+-  if [ -n "$only" ] && [ "$name" != "$only" ]; then
 +  if [ "$rerun" = 1 ] && [ ! -e "$records/$name" ]; then
      return 0
    fi
@@ -240,6 +252,10 @@ index eb41c9d..71311d9 100755
  
  if [ "$rerun" = 1 ]; then
    echo "verify --failed-only: every recorded step passes now; only a full run gives the verdict" >&2
+ fi
+-if [ -n "$only" ]; then
+-  echo "verify --step $only: the step passes; only a full run gives the verdict" >&2
+-fi
 diff --git a/.omc-project/bin/verify.md b/.omc-project/bin/verify.md
 index 8b13761..5c0839c 100644
 --- a/.omc-project/bin/verify.md
