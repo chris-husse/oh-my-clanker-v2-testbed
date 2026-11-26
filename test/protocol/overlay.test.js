@@ -253,6 +253,8 @@ test('the notes name what the omc2 terminal and /investigate follow', () => {
     assert.ok(flat.includes(text), `verify.hold.md says ${text}`);
   }
   assert.doesNotMatch(flat, /Go on with step 4 or 5 and the release \(step 6\) at once/);
+  assert.ok(flat.includes('Your final report (the verify turn\'s own, above its `OUTCOME` line; not an investigation\'s result) states, in this order:'),
+    'the report section names whose report it is');
   assert.ok(flat.includes('- `<NN-name>`: <title>: UNRESOLVED: <what is unknown>'), 'the report form covers UNRESOLVED');
   assert.ok(flat.includes('- `<NN-name>`: <title>: HOLD_ENDED: <what was gathered>'), 'and the interrupted ones');
   const notes = read('bin/verify.md');

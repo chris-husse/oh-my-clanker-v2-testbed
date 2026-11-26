@@ -43,7 +43,7 @@ The held scenario is the one whose `output.txt` has the line `database <TALLY_DB
 
 Up to 10 failing scenarios: investigate each in turn. More than 10: investigate the held scenario and a sample of 2 to 4
 more, taken from different scenario files: 3 to 5 `/investigate local` calls in all, one per scenario (a scenario only
-read from its files, without a call of its own, is not investigated). The rest are not investigated: the report lists
+read from its files, without a call of its own, is not investigated). The rest are not investigated: your final report lists
 each of them on its own line, by its full scenario id and title (the Report section below shows the form).
 
 ## 3. Investigate, one scenario per call
@@ -147,7 +147,8 @@ Never end a turn with a run held. Never stop a server, delete a database under `
 
 ## Report
 
-State, in this order:
+Your final report (the verify turn's own, above its `OUTCOME` line; not an investigation's result) states, in this
+order:
 
 1. Each `/investigate local` call: the scenario folder and its result, quoted (with its label, when it has one): the
    values used, the `tally-local` calls (tool, `database`, `port`, `path` or `sql`), the quoted rows or responses, and
